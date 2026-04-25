@@ -10,13 +10,18 @@ The contract exists so that, once you have used one of these CLIs, the others fe
 |---|---|---|---|
 | Repo naming (`{service}-export-cli`) | ✓ | ✓ | ✓ |
 | Timezone policy | ✓ | ✓ | ✓ |
-| Date flags (`--since` / `--until`) | ✗ | ✓ | ✗ |
-| Markdown-default output | ✗ | ✓ | ✓ |
-| Single `--format` flag | ✗ | ✗ | ✓ |
-| `auth status` subcommand | ✗ | ✗ | ✗ |
-| `prime` subcommand | ✓ (older shape) | ✗ | ✗ |
+| Date flags (`--since` / `--until`) | ✓ | ✓ | ✓ |
+| Markdown-default output | ✓ | ✓ | ✓ |
+| Single `--format` flag | ⏳ | ⏳ | ✓ |
+| `auth status` subcommand | ⏳ | ⏳ | ⏳ |
+| `prime` subcommand | ✓ | ✗ | ✗ |
 
-`✗` means the CLI either doesn't conform yet or pre-dates this contract; tracked in each repo's issue list.
+Legend: ✓ shipped · ⏳ PR open · ✗ not started
+
+In-flight PRs (April 25):
+[crono#9](https://github.com/quantcli/crono-export-cli/pull/9) ([10](https://github.com/quantcli/crono-export-cli/pull/10)) ·
+[liftoff#18](https://github.com/quantcli/liftoff-export-cli/pull/18) ([19](https://github.com/quantcli/liftoff-export-cli/pull/19)) ·
+[withings#9](https://github.com/quantcli/withings-export-cli/pull/9)
 
 ---
 
