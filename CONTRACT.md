@@ -12,16 +12,11 @@ The contract exists so that, once you have used one of these CLIs, the others fe
 | Timezone policy | ✓ | ✓ | ✓ |
 | Date flags (`--since` / `--until`) | ✓ | ✓ | ✓ |
 | Markdown-default output | ✓ | ✓ | ✓ |
-| Single `--format` flag | ⏳ | ⏳ | ✓ |
-| `auth status` subcommand | ⏳ | ⏳ | ⏳ |
-| `prime` subcommand | ✓ | ✗ | ✗ |
+| Single `--format` flag | ✓ | ✓ | ✓ |
+| `auth status` subcommand | ✓ | ✓ | ✓ |
+| `prime` subcommand | ✓ | ✓ | ✓ |
 
-Legend: ✓ shipped · ⏳ PR open · ✗ not started
-
-In-flight PRs (April 25):
-[crono#9](https://github.com/quantcli/crono-export-cli/pull/9) ([10](https://github.com/quantcli/crono-export-cli/pull/10)) ·
-[liftoff#18](https://github.com/quantcli/liftoff-export-cli/pull/18) ([19](https://github.com/quantcli/liftoff-export-cli/pull/19)) ·
-[withings#9](https://github.com/quantcli/withings-export-cli/pull/9)
+All sections shipped across all three CLIs (April 25, 2026).
 
 ---
 
