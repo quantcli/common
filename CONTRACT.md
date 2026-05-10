@@ -103,9 +103,10 @@ Prime is short. It is not a man page. If it grows past one terminal screen, some
 
 Conformance to this contract is verified by [`compat/`](compat/README.md), a small black-box Go test library that lives in this repo and is imported by every `*-export-cli` from its own CI. The current bundles:
 
-- [`compat/dates`](compat/README.md) — pins down §3: that `--since` / `--until` are documented in `--help`, that an invalid value exits non-zero with stderr-only error, and that flag handling makes no network request (per §5).
+- [`compat/dates`](compat/README.md) — pins down §3: that `--since` / `--until` are documented in `--help`, and that an invalid value exits non-zero with a stderr-only error. The bundle additionally asserts that `--help` and flag-validation failures make no network request — that is a harness invariant the framework defends on every PR, not a property §3 itself promises.
+- [`compat/formats`](compat/README.md) — pins down §4: that `--format` is documented, an unknown value exits non-zero with a stderr-only error, `--format json` emits a parseable JSON array, `--format csv` emits at least a header row, and the default is byte-identical to `--format markdown`. The `--format` parse-failure path is hermetic on the same harness-invariant basis as the dates bundle.
 
-A new exporter is not "in" the family until its CI runs at least the `dates` bundle green. Existing exporters that have not yet wired up the bundle are tracked in the Status table's Attestation column.
+A new exporter is not "in" the family until its CI runs at least the `dates` bundle green. The `formats` bundle ships, but the full §4 surface (particularly `--format csv`) is not yet implemented across all three CLIs, so the §4 row in the Status table remains human-attested until exporter parity catches up. Existing exporters that have not yet wired up a bundle are tracked in the Status table's Attestation column.
 
 ## 8. Versioning and releases
 
