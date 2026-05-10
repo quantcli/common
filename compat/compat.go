@@ -114,13 +114,19 @@ func (r Runner) Run(ctx context.Context, args ...string) (Result, error) {
 		res.ExitCode = 0
 		return res, nil
 	}
+	// Timeout check first. exec.CommandContext kills the process when
+	// the deadline expires, which surfaces as an *exec.ExitError on the
+	// signal path. The package contract promises a non-nil error on
+	// timeout, so we must detect that case before falling through to
+	// the ExitError handler — otherwise a hung CLI looks like a clean
+	// non-zero exit to the caller.
+	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+		return res, fmt.Errorf("compat: %s timed out after %s", r.Binary, timeout)
+	}
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
 		res.ExitCode = exitErr.ExitCode()
 		return res, nil
-	}
-	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
-		return res, fmt.Errorf("compat: %s timed out after %s", r.Binary, timeout)
 	}
 	return res, fmt.Errorf("compat: failed to run %s: %w", r.Binary, err)
 }
