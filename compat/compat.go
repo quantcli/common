@@ -36,6 +36,29 @@ type Runner struct {
 
 	// Timeout is the per-invocation timeout. Zero means 10 seconds.
 	Timeout time.Duration
+
+	// Subcommands declares the subcommands under which the contract
+	// surface lives — for CLIs (typically cobra-based) where flags like
+	// --since and --until are attached to data-producing subcommands
+	// rather than the root binary. Examples: crono's `biometrics`,
+	// `exercises`, `nutrition`, `servings`, `notes` each accept their
+	// own --since/--until.
+	//
+	// Empty means the surface is on the root binary; section bundles
+	// invoke the binary directly. Non-empty means each section's
+	// RunContract iterates the list and verifies the contract once per
+	// subcommand via t.Run, so a regression in any single subcommand
+	// surfaces as a named subtest failure rather than masking the rest.
+	//
+	// The Runner itself does not look at this field; section bundles
+	// (e.g. compat/dates) read it and dispatch via WithSubcommand.
+	Subcommands []string
+
+	// subcommand, when non-empty, is prepended to args on every Run
+	// call. Set via WithSubcommand; section bundles use it to dispatch
+	// per-subcommand. Callers do not need to set it directly — set
+	// Subcommands instead and let the bundle compose the dispatch.
+	subcommand string
 }
 
 // Result captures everything observable about one CLI invocation. All
@@ -68,7 +91,11 @@ func (r Runner) Run(ctx context.Context, args ...string) (Result, error) {
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(runCtx, r.Binary, args...)
+	fullArgs := args
+	if r.subcommand != "" {
+		fullArgs = append([]string{r.subcommand}, args...)
+	}
+	cmd := exec.CommandContext(runCtx, r.Binary, fullArgs...)
 	// Default to an empty env so tests are hermetic. Callers opt into
 	// passing TZ, HOME, etc. via Runner.Env.
 	if r.Env != nil {
@@ -118,3 +145,22 @@ func (r Runner) WithEnv(kv ...string) Runner {
 	out.Env = append(append([]string(nil), r.Env...), kv...)
 	return out
 }
+
+// WithSubcommand returns a copy of r whose Run prepends sub as the
+// first command-line argument. Section bundles use this internally to
+// dispatch per-subcommand when Runner.Subcommands is non-empty;
+// integrators normally set Subcommands and let the bundle do it.
+//
+// Calling WithSubcommand again replaces (not stacks) the previous
+// value; nested subcommand paths are out of scope for the current
+// contract.
+func (r Runner) WithSubcommand(sub string) Runner {
+	out := r
+	out.subcommand = sub
+	return out
+}
+
+// Subcommand returns the subcommand that Run will prepend to args, or
+// the empty string if none is set. Section bundles use this in subtest
+// names so failures point at the offending subcommand.
+func (r Runner) Subcommand() string { return r.subcommand }

@@ -37,7 +37,28 @@ func TestContractDates(t *testing.T) {
 }
 ```
 
-Then in your CI workflow:
+### Cobra-based CLIs: date flags on subcommands
+
+When `--since`/`--until` live on subcommands (the crono / liftoff / withings pattern), set `Subcommands` and the suite will dispatch per-subcommand:
+
+```go
+func TestContractDates(t *testing.T) {
+    bin := os.Getenv("EXPORT_CLI_BIN")
+    if bin == "" {
+        t.Skip("EXPORT_CLI_BIN not set; skipping compat suite")
+    }
+    dates.RunContract(t, compat.Runner{
+        Binary: bin,
+        Subcommands: []string{
+            "biometrics", "exercises", "nutrition", "servings", "notes",
+        },
+    })
+}
+```
+
+Each subcommand is verified under a `subcommand=NAME/...` subtree, so a regression in any single one fails as a named subtest instead of masking the rest.
+
+### CI workflow
 
 ```yaml
 - name: build
@@ -59,6 +80,8 @@ The exporter does not need a separate `go.mod` for compat tests — the standard
 | `HelpIsHermetic` | §5 | `--help` succeeds with all HTTP proxies pointed at an unreachable address. |
 | `FlagValidationIsHermetic` | §5 | A parse failure also produces no successful outbound request. |
 
+When `compat.Runner.Subcommands` is set, every row above runs once per declared subcommand under `subcommand=NAME/...`.
+
 ## What it does NOT cover yet
 
 The actual local-midnight semantics of `--since 2026-04-15` (the harmonization that just landed across crono/liftoff/withings) is still **human-attested** in the status table. Asserting it black-box requires either:
@@ -78,3 +101,5 @@ When that affordance lands, the test belongs here as `dates.LocalMidnightSemanti
 ## Self-test
 
 This module has its own test that runs the suite against a stub CLI in `internal/stubcli/`. The stub is intentionally narrow — it exists so `go test ./...` from this module's root proves the library compiles and the assertions fire correctly, without depending on any of the real export-CLIs. Failures in the self-test mean the library has a bug; failures in an exporter's compat test mean the exporter drifted from the contract.
+
+The stub has two modes (`STUBCLI_MODE=flat` and `STUBCLI_MODE=cobra`). The flat-mode self-test exercises the original Runner shape; the cobra-mode self-test exercises `Subcommands`-based dispatch. In cobra mode, the stub's root `--help` deliberately omits `--since/--until`, so the cobra-mode self-test fails fast if `compat.Runner` ever stops prepending the subcommand. There is also a focused unit test for `Runner.WithSubcommand` using an `argecho` helper that just prints `os.Args`.

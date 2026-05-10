@@ -3,7 +3,10 @@
 //
 // What is machine-attested here:
 //
-//   - The CLI documents `--since` and `--until` in its top-level help.
+//   - The CLI documents `--since` and `--until` in the help output of
+//     whatever entry point owns them — the root binary for flat CLIs,
+//     or each declared subcommand for cobra-based CLIs (set via
+//     compat.Runner.Subcommands).
 //   - An invalid `--since` value produces a non-zero exit with an error
 //     on stderr and an empty stdout.
 //   - A flag-validation failure does not perform a network request.
@@ -52,12 +55,37 @@ import (
 // the others. The bundle is safe to run in parallel with other compat
 // suites; individual subtests are not marked parallel because they
 // shell out to the same binary and the OS may serialize them anyway.
+//
+// If r.Subcommands is non-empty, RunContract iterates the list and
+// runs the four assertions once per subcommand under a
+// "subcommand=NAME" t.Run group. This is how cobra-based CLIs (e.g.
+// crono's `biometrics`, `exercises`, `nutrition`, `servings`, `notes`)
+// attest the contract on every data-producing subcommand. If empty,
+// the assertions run once against the root binary — the right shape
+// for CLIs that put --since/--until at the top level.
 func RunContract(t *testing.T, r compat.Runner) {
 	t.Helper()
 	if r.Binary == "" {
 		t.Fatal("dates: compat.Runner.Binary is empty")
 	}
 
+	if len(r.Subcommands) == 0 {
+		runContractOne(t, r)
+		return
+	}
+	for _, sub := range r.Subcommands {
+		sub := sub
+		t.Run("subcommand="+sub, func(t *testing.T) {
+			runContractOne(t, r.WithSubcommand(sub))
+		})
+	}
+}
+
+// runContractOne runs the four date-flag assertions against a single
+// invocation surface — either the root binary (when r has no
+// subcommand prefix) or a specific subcommand of it.
+func runContractOne(t *testing.T, r compat.Runner) {
+	t.Helper()
 	t.Run("HelpDocumentsDateFlags", func(t *testing.T) {
 		helpDocumentsDateFlags(t, r)
 	})
@@ -73,9 +101,11 @@ func RunContract(t *testing.T, r compat.Runner) {
 }
 
 // helpDocumentsDateFlags asserts that the CLI documents `--since` and
-// `--until` somewhere in its top-level `--help` output. This is the
-// minimum binding between the contract and the binary: an exporter that
-// quietly drops one of the flags will fail this test.
+// `--until` somewhere in the `--help` output of the configured entry
+// point — root binary or subcommand, depending on how the integrator
+// configured compat.Runner. This is the minimum binding between the
+// contract and the binary: an exporter that quietly drops one of the
+// flags will fail this test.
 func helpDocumentsDateFlags(t *testing.T, r compat.Runner) {
 	t.Helper()
 	res := r.MustRun(t, "--help")
@@ -97,12 +127,11 @@ func helpDocumentsDateFlags(t *testing.T, r compat.Runner) {
 // invalidSinceValueFails asserts that a malformed `--since` value causes
 // the CLI to exit non-zero with an error on stderr and an empty stdout.
 //
-// The flag is passed to whatever subcommand the CLI puts first; we use a
-// known-bad value so any subcommand that accepts `--since` will reject
-// it at parse time. If a CLI accepts `--since` only on subcommands, the
-// integrator overrides this test by passing their own subcommand name
-// via a future SubcommandHint hook — for now the contract requires that
-// at least one entry point rejects malformed dates.
+// We use a known-bad value so any entry point that accepts `--since`
+// will reject it at parse time. For cobra-based CLIs whose date flags
+// live on subcommands, the integrator sets compat.Runner.Subcommands;
+// RunContract then dispatches via WithSubcommand and this assertion
+// runs once per declared subcommand.
 func invalidSinceValueFails(t *testing.T, r compat.Runner) {
 	t.Helper()
 	// "obviously-not-a-date" should never parse as a keyword, absolute

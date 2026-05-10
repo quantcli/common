@@ -76,6 +76,7 @@ Rules:
 - Anyone changing `CONTRACT.md` is also expected to update or add tests under `compat/` that exercise the new behavior against every `*-export-cli`.
 - The harness is deliberately black-box: it shells out to the binary and asserts on stdout, stderr, and exit code only. It must not import a CLI's internal packages.
 - One subpackage per contract section (`compat/dates`, future `compat/formats`, `compat/auth`, `compat/prime`). Each exposes a single entry point — `RunContract(t, runner)` — that exporters call from one build-tagged `_test.go` file.
+- Cobra-based exporters whose contract surface lives on subcommands set `compat.Runner.Subcommands`; section bundles dispatch per-subcommand under a `subcommand=NAME/...` subtree. Flat CLIs leave the field empty and the bundle runs against the root binary.
 - A PR that changes the contract without touching `compat/` is incomplete. Either update the tests in the same PR or open a follow-up issue and link it from the PR body before merging — the Lead Go Engineer holds the line on this.
 - Compat tests run in CI on every PR and on `main`. A failing compat test on `main` means at least one shipped CLI no longer matches the contract, and that's a release-blocker incident, not a flake.
 - The Status table in `CONTRACT.md` distinguishes **machine-attested** rows (covered by `compat/`) from **human-attested** rows (still verified by reviewer judgment). Promoting a row from human to machine attestation is itself a worthwhile PR.
