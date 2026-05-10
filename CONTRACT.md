@@ -6,17 +6,18 @@ The contract exists so that, once you have used one of these CLIs, the others fe
 
 ## Status
 
-| Section | crono-export | liftoff-export | withings-export |
-|---|---|---|---|
-| Repo naming (`{service}-export-cli`) | ✓ | ✓ | ✓ |
-| Timezone policy | ✓ | ✓ | ✓ |
-| Date flags (`--since` / `--until`) | ✓ | ✓ | ✓ |
-| Markdown-default output | ✓ | ✓ | ✓ |
-| Single `--format` flag | ✓ | ✓ | ✓ |
-| `auth status` subcommand | ✓ | ✓ | ✓ |
-| `prime` subcommand | ✓ | ✓ | ✓ |
+| Section | crono-export | liftoff-export | withings-export | Attestation |
+|---|---|---|---|---|
+| Repo naming (`{service}-export-cli`) | ✓ | ✓ | ✓ | human |
+| Timezone policy | ✓ | ✓ | ✓ | human |
+| Date flags (`--since` / `--until`) — surface | ✓ | ✓ | ✓ | **machine** ([`compat/dates`](compat/README.md)) |
+| Date flags — local-midnight semantics | ✓ | ✓ | ✓ | human |
+| Markdown-default output | ✓ | ✓ | ✓ | human |
+| Single `--format` flag | ✓ | ✓ | ✓ | human |
+| `auth status` subcommand | ✓ | ✓ | ✓ | human |
+| `prime` subcommand | ✓ | ✓ | ✓ | human |
 
-All sections shipped across all three CLIs (April 25, 2026).
+All sections shipped across all three CLIs (April 25, 2026). The "Attestation" column tracks whether a contract section is verified by an automated [compat test](compat/README.md) on every PR or only by human review at merge time. Rows marked "human" are candidates for promotion to "machine" as the compat library grows.
 
 ---
 
@@ -98,7 +99,15 @@ GOTCHAS       non-obvious pitfalls
 
 Prime is short. It is not a man page. If it grows past one terminal screen, something belongs in this contract instead.
 
-## 7. Versioning and releases
+## 7. Conformance (the compat library)
+
+Conformance to this contract is verified by [`compat/`](compat/README.md), a small black-box Go test library that lives in this repo and is imported by every `*-export-cli` from its own CI. The current bundles:
+
+- [`compat/dates`](compat/README.md) — pins down §3: that `--since` / `--until` are documented in `--help`, that an invalid value exits non-zero with stderr-only error, and that flag handling makes no network request (per §5).
+
+A new exporter is not "in" the family until its CI runs at least the `dates` bundle green. Existing exporters that have not yet wired up the bundle are tracked in the Status table's Attestation column.
+
+## 8. Versioning and releases
 
 Semantic versioning. User-visible bug fix → patch. New subcommand or flag → minor. Removed/renamed flag → major. Releases cut via `gh release create` against the relevant tag; goreleaser builds binaries for darwin/linux/windows × amd64/arm64 and publishes the cask to `quantcli/homebrew-tap`.
 
