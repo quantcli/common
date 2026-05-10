@@ -12,8 +12,8 @@ The contract exists so that, once you have used one of these CLIs, the others fe
 | Timezone policy | ✓ | ✓ | ✓ | human |
 | Date flags (`--since` / `--until`) — surface | ✓ | ✓ | ✓ | **machine** ([`compat/dates`](compat/README.md)) |
 | Date flags — local-midnight semantics | ✓ | ✓ | ✓ | human |
-| Markdown-default output | ✓ | ✓ | ✓ | human |
-| Single `--format` flag | ✓ | ✓ | ✓ | human |
+| Markdown-default output | ✓ | ✓ | ✓ | **machine** ([`compat/formats`](compat/README.md)) |
+| Single `--format` flag | ✓ | ✓ | ✓ | **machine** ([`compat/formats`](compat/README.md)) |
 | `auth status` subcommand | ✓ | ✓ | ✓ | human |
 | `prime` subcommand | ✓ | ✓ | ✓ | human |
 
@@ -104,8 +104,9 @@ Prime is short. It is not a man page. If it grows past one terminal screen, some
 Conformance to this contract is verified by [`compat/`](compat/README.md), a small black-box Go test library that lives in this repo and is imported by every `*-export-cli` from its own CI. The current bundles:
 
 - [`compat/dates`](compat/README.md) — pins down §3: that `--since` / `--until` are documented in `--help`, that an invalid value exits non-zero with stderr-only error, and that flag handling makes no network request (per §5).
+- [`compat/formats`](compat/README.md) — pins down §4: that `--format` is documented, an unknown value exits non-zero with stderr-only error and no network call, `--format json` emits a parseable JSON array, `--format csv` emits at least a header row, and the default is byte-identical to `--format markdown`.
 
-A new exporter is not "in" the family until its CI runs at least the `dates` bundle green. Existing exporters that have not yet wired up the bundle are tracked in the Status table's Attestation column.
+A new exporter is not "in" the family until its CI runs at least the `dates` and `formats` bundles green. Existing exporters that have not yet wired up a bundle are tracked in the Status table's Attestation column.
 
 ## 8. Versioning and releases
 
