@@ -78,6 +78,20 @@ The contract is only as honest as the test that proves three CLIs behave the sam
 
 The `compat/` harness is being scaffolded — until it lands, document the test you *would* write in the PR body so the expectation stays visible.
 
+## Supply-chain and security
+
+Every PR — here and in each `*-export-cli` — is gated on the `security` workflow defined in [`.github/workflows/security.yml`](.github/workflows/security.yml). It runs three checks:
+
+- **`govulncheck`** — Go vulnerability database scan against the module's full dependency closure (skipped when there is no `go.mod`).
+- **`osv-scanner`** — OSV transitive vulnerability scan over the working tree.
+- **License policy** — every direct + transitive Go dependency must resolve to one of the permissive SPDX ids listed in [`SECURITY.md`](SECURITY.md#supply-chain-policy). GPL-family, SSPL, BSL, and other non-permissive licenses are blocking.
+
+If a PR fails the license-policy check, do not unblock it by adding a `replace` directive or vendoring a fork to relabel the license. Either drop the dependency, switch to a permissively licensed equivalent, or open an issue requesting a policy exception with the rationale.
+
+To propose a security policy change (allowlist, severity bar, or workflow tooling), open an issue here first — these decisions ripple to every export-cli.
+
+For reporting a vulnerability in a shipped CLI or in `common`, see [SECURITY.md](SECURITY.md). Do **not** open a public issue with exploit details.
+
 ## License and sign-off
 
 This repo is MIT-licensed (see [LICENSE](LICENSE)). By contributing you agree your changes are under the same license. We don't require a CLA. Sign-off (`Signed-off-by:` in commit messages) is encouraged but not required.
