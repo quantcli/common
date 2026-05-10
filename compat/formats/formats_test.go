@@ -39,6 +39,59 @@ func TestRunContract_AgainstStubSubcommand(t *testing.T) {
 	formats.RunContract(t, r)
 }
 
+// TestRunContract_PartialCodec_SkipsCSV pins down the
+// Runner.SupportedFormats affordance: an exporter that declares only
+// markdown+json must pass the bundle even though one of the §4
+// codecs is unimplemented.
+//
+// The proof is adversarial. We build the stub with
+// STUBCLI_FORMATS=markdown,json so it actively rejects --format csv
+// with a non-zero exit — the partial-codec exporter shape
+// (crono/liftoff). Then we set
+// SupportedFormats: []string{"markdown", "json"} on the Runner so
+// the bundle skips CSVHasHeader. The whole suite must pass.
+//
+// If anyone deletes the skip guard in csvHasHeader, this test fails
+// because the stub rejects --format csv and the subtest runs against
+// it.
+func TestRunContract_PartialCodec_SkipsCSV(t *testing.T) {
+	bin := buildStub(t)
+	r := compat.Runner{
+		Binary:           bin,
+		Env:              []string{"STUBCLI_FORMATS=markdown,json"},
+		SupportedFormats: []string{"markdown", "json"},
+	}
+	formats.RunContract(t, r)
+}
+
+// TestSupportsFormat documents the nil-vs-empty-vs-subset behavior
+// of compat.Runner.SupportsFormat at the package level. The formats
+// bundle's skip guards rely on these semantics being stable.
+func TestSupportsFormat(t *testing.T) {
+	nilR := compat.Runner{Binary: "ignored"}
+	for _, codec := range []string{"markdown", "json", "csv", "yaml"} {
+		if !nilR.SupportsFormat(codec) {
+			t.Errorf("nil SupportedFormats: SupportsFormat(%q) = false; want true (nil = all)", codec)
+		}
+	}
+
+	emptyR := compat.Runner{Binary: "ignored", SupportedFormats: []string{}}
+	for _, codec := range []string{"markdown", "json", "csv"} {
+		if emptyR.SupportsFormat(codec) {
+			t.Errorf("empty SupportedFormats: SupportsFormat(%q) = true; want false", codec)
+		}
+	}
+
+	subsetR := compat.Runner{Binary: "ignored", SupportedFormats: []string{"markdown", "json"}}
+	cases := map[string]bool{"markdown": true, "json": true, "csv": false, "yaml": false}
+	for codec, want := range cases {
+		if got := subsetR.SupportsFormat(codec); got != want {
+			t.Errorf("subset SupportedFormats: SupportsFormat(%q) = %v; want %v", codec, got, want)
+		}
+	}
+}
+
+
 // buildStub compiles the stub CLI into a temp directory and returns
 // the absolute path. It uses `go build` rather than relying on a
 // checked-in binary so the test is reproducible across platforms.

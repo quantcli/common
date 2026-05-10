@@ -25,6 +25,13 @@
 // should wire the bundle in once it is — the parse-time subtests
 // alone are not enough to claim machine attestation for §4.
 //
+// Partial-codec exporters can declare which §4 codecs they implement
+// via compat.Runner.SupportedFormats. Codec-specific subtests skip
+// (with t.Skipf) when their codec is not in the list, so a CLI that
+// has not yet added a CSV writer can adopt the bundle without
+// failure. The parse-level subtests run regardless because they
+// assert on the --format flag itself, not on a specific codec.
+//
 // Exporter usage:
 //
 //	//go:build compat
@@ -173,8 +180,13 @@ func flagValidationIsHermetic(t *testing.T, r compat.Runner) {
 // pass. The §4 empty-result rule (`[]` on no data) is therefore
 // covered implicitly so long as the integrator's data path returns
 // successfully.
+//
+// Skipped (not failed) if "json" is not in Runner.SupportedFormats.
 func jsonIsArray(t *testing.T, r compat.Runner) {
 	t.Helper()
+	if !r.SupportsFormat("json") {
+		t.Skipf("--format json not declared in Runner.SupportedFormats")
+	}
 	res := r.MustRun(t, "--format", "json")
 	if res.ExitCode != 0 {
 		t.Fatalf("--format json exited %d; stderr=%q", res.ExitCode, res.StderrString())
@@ -194,8 +206,16 @@ func jsonIsArray(t *testing.T, r compat.Runner) {
 // least one non-empty line on stdout. §4 says an empty result is
 // success with "no rows" for CSV — the header row is still required,
 // so even a zero-row CSV must have one line.
+//
+// Skipped (not failed) if "csv" is not in Runner.SupportedFormats.
+// crono-export-cli and liftoff-export-cli are partial-codec exporters
+// today; the bundle becomes adoptable for them by declaring
+// SupportedFormats: []string{"markdown", "json"}.
 func csvHasHeader(t *testing.T, r compat.Runner) {
 	t.Helper()
+	if !r.SupportsFormat("csv") {
+		t.Skipf("--format csv not declared in Runner.SupportedFormats")
+	}
 	res := r.MustRun(t, "--format", "csv")
 	if res.ExitCode != 0 {
 		t.Fatalf("--format csv exited %d; stderr=%q", res.ExitCode, res.StderrString())
@@ -210,8 +230,16 @@ func csvHasHeader(t *testing.T, r compat.Runner) {
 // flag) produces byte-identical stdout to `--format markdown`. This is
 // the strongest behavioral statement of "markdown is the default"
 // available without parsing markdown.
+//
+// Skipped (not failed) if "markdown" is not in
+// Runner.SupportedFormats. A CLI that does not declare markdown
+// cannot be expected to default to it, and forcing the equality check
+// would just measure noise.
 func defaultIsMarkdown(t *testing.T, r compat.Runner) {
 	t.Helper()
+	if !r.SupportsFormat("markdown") {
+		t.Skipf("--format markdown not declared in Runner.SupportedFormats")
+	}
 	noFlag := r.MustRun(t)
 	explicit := r.MustRun(t, "--format", "markdown")
 	if noFlag.ExitCode != 0 {

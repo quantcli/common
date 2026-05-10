@@ -6,18 +6,26 @@ The contract exists so that, once you have used one of these CLIs, the others fe
 
 ## Status
 
-| Section | crono-export | liftoff-export | withings-export | Attestation |
-|---|---|---|---|---|
-| Repo naming (`{service}-export-cli`) | ✓ | ✓ | ✓ | human |
-| Timezone policy | ✓ | ✓ | ✓ | human |
-| Date flags (`--since` / `--until`) — surface | ✓ | ✓ | ✓ | **machine** ([`compat/dates`](compat/README.md)) |
-| Date flags — local-midnight semantics | ✓ | ✓ | ✓ | human |
-| Markdown-default output | ✓ | ✓ | ✓ | human |
-| Single `--format` flag | ✓ | ✓ | ✓ | human |
-| `auth status` subcommand | ✓ | ✓ | ✓ | human |
-| `prime` subcommand | ✓ | ✓ | ✓ | human |
+Each cell shows whether the section is implemented and how it is attested for that CLI:
 
-All sections shipped across all three CLIs (April 25, 2026). The "Attestation" column tracks whether a contract section is verified by an automated [compat test](compat/README.md) on every PR or only by human review at merge time. Rows marked "human" are candidates for promotion to "machine" as the compat library grows.
+- **machine** — verified by a [`compat/`](compat/README.md) bundle on every PR.
+- **human** — implemented; verified only by review at merge time.
+- **—** — not implemented yet.
+
+| Section | crono-export | liftoff-export | withings-export |
+|---|---|---|---|
+| Repo naming (`{service}-export-cli`) | human | human | human |
+| Timezone policy | human | human | human |
+| Date flags (`--since` / `--until`) — surface | **machine** | **machine** | **machine** |
+| Date flags — local-midnight semantics | human | human | human |
+| `--format` flag surface (documented, rejects unknown) | human | human | human |
+| `--format markdown` (default) | human | human | human |
+| `--format json` | human | human | human |
+| `--format csv` | — | — | human |
+| `auth status` subcommand | human | human | human |
+| `prime` subcommand | human | human | human |
+
+All implemented sections shipped across all three CLIs (April 25, 2026). The table is per-cell rather than per-row so partial-codec adoption (e.g. crono/liftoff implementing markdown+json but not csv) is visible without losing fidelity. Cells marked "human" are candidates for promotion to **machine** as the compat library grows and exporters wire it in via `compat.Runner.SupportedFormats`.
 
 ---
 
@@ -106,7 +114,7 @@ Conformance to this contract is verified by [`compat/`](compat/README.md), a sma
 - [`compat/dates`](compat/README.md) — pins down §3: that `--since` / `--until` are documented in `--help`, and that an invalid value exits non-zero with a stderr-only error. The bundle additionally asserts that `--help` and flag-validation failures make no network request — that is a harness invariant the framework defends on every PR, not a property §3 itself promises.
 - [`compat/formats`](compat/README.md) — pins down §4: that `--format` is documented, an unknown value exits non-zero with a stderr-only error, `--format json` emits a parseable JSON array, `--format csv` emits at least a header row, and the default is byte-identical to `--format markdown`. The `--format` parse-failure path is hermetic on the same harness-invariant basis as the dates bundle.
 
-A new exporter is not "in" the family until its CI runs at least the `dates` bundle green. The `formats` bundle ships, but the full §4 surface (particularly `--format csv`) is not yet implemented across all three CLIs, so the §4 row in the Status table remains human-attested until exporter parity catches up. Existing exporters that have not yet wired up a bundle are tracked in the Status table's Attestation column.
+A new exporter is not "in" the family until its CI runs at least the `dates` bundle green. The `formats` bundle ships with a `Runner.SupportedFormats` affordance so partial-codec exporters can adopt it without an immediate `--format csv` failure: declare the codecs you actually implement and the bundle skips codec-specific subtests for the rest. Each exporter's per-codec cells in the Status table flip from `human` to **machine** as it wires the bundle in; codecs not yet implemented stay at `—` until the writer lands.
 
 ## 8. Versioning and releases
 
