@@ -44,3 +44,32 @@ jobs:
       - name: go test
         if: steps.detect.outputs.has_go == 'true'
         run: go test ./...
+
+  compat:
+    name: compat module (vet + self-test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: detect
+        name: detect compat module
+        run: |
+          if [ -f compat/go.mod ]; then
+            echo "has_compat=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_compat=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No compat/go.mod present; skipping compat job."
+          fi
+      - uses: actions/setup-go@v5
+        if: steps.detect.outputs.has_compat == 'true'
+        with:
+          go-version-file: compat/go.mod
+          # compat is stdlib-only; no module cache needed.
+          cache: false
+      - name: go vet (compat)
+        if: steps.detect.outputs.has_compat == 'true'
+        working-directory: compat
+        run: go vet ./...
+      - name: go test (compat self-test)
+        if: steps.detect.outputs.has_compat == 'true'
+        working-directory: compat
+        run: go test ./...

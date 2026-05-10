@@ -69,14 +69,19 @@ Keep the per-CLI PR (the one that adds the CLI to the table) trivial and reviewa
 
 ## Compat tests
 
-The contract is only as honest as the test that proves three CLIs behave the same. The compat-test expectation:
+The contract is only as honest as the test that proves three CLIs behave the same. The harness lives in [`compat/`](compat/README.md) as its own Go module (`github.com/quantcli/common/compat`); each exporter imports it and runs the relevant bundles against its own built binary in CI.
 
-- Anyone changing `CONTRACT.md` is also expected to update or add tests in this repo that exercise the contract against the released binaries of every `*-export-cli`. The tests live in `compat/` (one suite per contract section: dates, formats, auth, prime).
-- The tests run pinned versions of each CLI binary, drive them with the same input fixtures, and assert that observable output (stdout, stderr, exit code, JSON shape) matches the spec. They are deliberately black-box: the goal is to catch divergence, not to test internals.
+Rules:
+
+- Anyone changing `CONTRACT.md` is also expected to update or add tests under `compat/` that exercise the new behavior against every `*-export-cli`.
+- The harness is deliberately black-box: it shells out to the binary and asserts on stdout, stderr, and exit code only. It must not import a CLI's internal packages.
+- One subpackage per contract section (`compat/dates`, future `compat/formats`, `compat/auth`, `compat/prime`). Each exposes a single entry point — `RunContract(t, runner)` — that exporters call from one build-tagged `_test.go` file.
+- Cobra-based exporters whose contract surface lives on subcommands set `compat.Runner.Subcommands`; section bundles dispatch per-subcommand under a `subcommand=NAME/...` subtree. Flat CLIs leave the field empty and the bundle runs against the root binary.
 - A PR that changes the contract without touching `compat/` is incomplete. Either update the tests in the same PR or open a follow-up issue and link it from the PR body before merging — the Lead Go Engineer holds the line on this.
 - Compat tests run in CI on every PR and on `main`. A failing compat test on `main` means at least one shipped CLI no longer matches the contract, and that's a release-blocker incident, not a flake.
+- The Status table in `CONTRACT.md` distinguishes **machine-attested** rows (covered by `compat/`) from **human-attested** rows (still verified by reviewer judgment). Promoting a row from human to machine attestation is itself a worthwhile PR.
 
-The `compat/` harness is being scaffolded — until it lands, document the test you *would* write in the PR body so the expectation stays visible.
+**Bar for a new exporter:** the exporter's CI must build its binary and run `dates.RunContract` against it green. See [`compat/README.md`](compat/README.md) for the one-file integration pattern.
 
 ## License and sign-off
 
