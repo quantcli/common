@@ -86,8 +86,8 @@ The exporter does not need a separate `go.mod` for compat tests — the standard
 |---|---|---|
 | `HelpDocumentsDateFlags` | §3 | `--help` mentions `--since` and `--until` and exits 0. |
 | `InvalidSinceValueFails` | §3, §4 | `--since obviously-not-a-date` exits non-zero, writes to stderr, leaves stdout empty. |
-| `HelpIsHermetic` | §5 | `--help` succeeds with all HTTP proxies pointed at an unreachable address. |
-| `FlagValidationIsHermetic` | §5 | A parse failure also produces no successful outbound request. |
+| `HelpIsHermetic` | harness invariant | `--help` succeeds with all HTTP proxies pointed at an unreachable address. |
+| `FlagValidationIsHermetic` | harness invariant | A parse failure also produces no successful outbound request. |
 
 When `compat.Runner.Subcommands` is set, every row above runs once per declared subcommand under `subcommand=NAME/...`.
 
@@ -97,12 +97,14 @@ When `compat.Runner.Subcommands` is set, every row above runs once per declared 
 |---|---|---|
 | `HelpDocumentsFormatFlag` | §4 | `--help` mentions `--format` and exits 0. |
 | `UnknownFormatFails` | §4 | `--format obviously-not-a-format` exits non-zero, writes to stderr, leaves stdout empty. |
-| `FlagValidationIsHermetic` | §5 | The unknown-format parse failure makes no successful outbound request. |
+| `FlagValidationIsHermetic` | harness invariant | The unknown-format parse failure makes no successful outbound request. |
 | `JSONIsArray` | §4 | `--format json` exits 0 and emits stdout that unmarshals as `[]any`. |
 | `CSVHasHeader` | §4 | `--format csv` exits 0 and emits at least one non-empty line on stdout (the header row, present even on an empty result). |
 | `DefaultIsMarkdown` | §4 | No `--format` flag produces byte-identical stdout to `--format markdown`. |
 
 `JSONIsArray`, `CSVHasHeader`, and `DefaultIsMarkdown` invoke the data path with no extra args beyond `--format`. Integrators whose data path needs credentials or other env to succeed pass them via `compat.Runner.Env`. As with `dates`, `subcommand=NAME/...` subtest groups fire when `Subcommands` is set.
+
+**Exporter parity note (as of bundle landing):** §4 lists three required codecs (markdown, json, csv), but only `withings-export-cli` implements all three today; `crono-export-cli` and `liftoff-export-cli` reject `--format csv`. Until the framework grows a `Runner.SupportedFormats` affordance (or those CLIs add CSV writers), the `CSVHasHeader` subtest fails against them. That is why the §4 row in CONTRACT.md's Status table remains human-attested at bundle landing — it will flip to **machine** once exporter parity catches up.
 
 ## What it does NOT cover yet
 

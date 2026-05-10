@@ -149,8 +149,12 @@ func unknownFormatFails(t *testing.T, r compat.Runner) {
 // in case the CLI looks up format codecs differently than date
 // values.
 //
-// CONTRACT §5: "A CLI run with --help or with a flag-validation
-// failure must not make network requests."
+// This is the same harness invariant the dates bundle defends — a
+// flag-validation failure must not have already opened a connection
+// by the time it exits non-zero. It is not a contractual claim
+// (CONTRACT.md does not define a hermeticity section today);
+// codifying that is tracked separately. Until then, the framework
+// enforces it here so an exporter cannot regress it silently.
 func flagValidationIsHermetic(t *testing.T, r compat.Runner) {
 	t.Helper()
 	res, err := r.WithEnv(noNetworkEnv()...).Run(context.Background(), "--format", unknownFormatValue)

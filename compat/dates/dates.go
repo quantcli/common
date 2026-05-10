@@ -161,8 +161,13 @@ func invalidSinceValueFails(t *testing.T, r compat.Runner) {
 // unreachable address. If the CLI tries to hit the network at all, it
 // will fail or hang — the latter is caught by the Runner timeout.
 //
-// CONTRACT §5: "A CLI run with --help or with a flag-validation failure
-// must not make network requests."
+// This is a harness invariant, not a property the contract promises
+// today. A `--help` that dialed out would still satisfy §3 surface
+// checks but would be unusable for LLM-agent introspection (an agent
+// must be able to ask "what does this CLI do" without a token or
+// network). Codifying hermeticity as its own CONTRACT.md section is
+// tracked separately; in the meantime the framework defends the
+// property here so an exporter cannot regress it silently.
 func helpIsHermetic(t *testing.T, r compat.Runner) {
 	t.Helper()
 	res := r.WithEnv(noNetworkEnv()...).MustRun(t, "--help")
@@ -171,8 +176,10 @@ func helpIsHermetic(t *testing.T, r compat.Runner) {
 	}
 }
 
-// flagValidationIsHermetic is the other half of CONTRACT §5: a parse
-// failure must not have already opened a connection.
+// flagValidationIsHermetic is the parse-failure half of the same
+// harness invariant documented on helpIsHermetic above: a CLI that
+// dialed out before rejecting an invalid flag would have already
+// leaked a network call by the time it exits non-zero.
 func flagValidationIsHermetic(t *testing.T, r compat.Runner) {
 	t.Helper()
 	args := []string{"--since", "obviously-not-a-date", "--until", "obviously-not-a-date"}

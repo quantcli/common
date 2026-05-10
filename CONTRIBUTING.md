@@ -81,7 +81,7 @@ Rules:
 - Compat tests run in CI on every PR and on `main`. A failing compat test on `main` means at least one shipped CLI no longer matches the contract, and that's a release-blocker incident, not a flake.
 - The Status table in `CONTRACT.md` distinguishes **machine-attested** rows (covered by `compat/`) from **human-attested** rows (still verified by reviewer judgment). Promoting a row from human to machine attestation is itself a worthwhile PR.
 
-**Bar for a new exporter:** the exporter's CI must build its binary and run `dates.RunContract` and `formats.RunContract` against it green. See [`compat/README.md`](compat/README.md) for the one-file integration pattern.
+**Bar for a new exporter:** the exporter's CI must build its binary and run `dates.RunContract` against it green. The `formats.RunContract` bundle ships, but its CSV subtest assumes an exporter that implements all three §4 codecs (markdown, json, csv) — until the framework gains a `Runner.SupportedFormats` affordance, exporters whose CSV writer is incomplete cannot adopt the bundle as a hard gate. Wire it in as exporter parity catches up. See [`compat/README.md`](compat/README.md) for the one-file integration pattern.
 
 ## License and sign-off
 
