@@ -5,6 +5,7 @@ Shared contracts and conventions for [quantcli](https://github.com/quantcli) exp
 ## Contents
 
 - **[CONTRACT.md](CONTRACT.md)** — the user-facing surface every `*-export-cli` adheres to: repo naming, timezone policy, date flags, output formats, auth, the `prime` subcommand, versioning.
+- **[LICENSE](LICENSE)** — MIT.
 
 ## Why a repo for this
 
