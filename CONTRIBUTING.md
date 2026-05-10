@@ -81,6 +81,17 @@ Rules:
 - Compat tests run in CI on every PR and on `main`. A failing compat test on `main` means at least one shipped CLI no longer matches the contract, and that's a release-blocker incident, not a flake.
 - The Status table in `CONTRACT.md` distinguishes **machine-attested** rows (covered by `compat/`) from **human-attested** rows (still verified by reviewer judgment). Promoting a row from human to machine attestation is itself a worthwhile PR.
 
+### Citing the contract from compat code
+
+If you write a comment in `compat/` that quotes the contract, use the form `CONTRACT §N: "exact text"`. Every such quote is auto-verified at PR time by `TestCONTRACTCitationsAreReal` in `compat/citations_test.go` — the test walks the compat tree and fails CI if the quoted fragment is not a substring of section N of `CONTRACT.md`. The check uses double-quoted fragments only; backtick-wrapped code references (e.g. `` `--format` ``) are ignored.
+
+Two ways to make a failing citation green:
+
+- Drop the quote, or restate the property without claiming it comes from the contract.
+- Update `CONTRACT.md` so §N actually contains the text, then re-run `go test ./...` from `compat/`.
+
+The check exists because two consecutive PRs landed `CONTRACT §5:` quotes that referenced text §5 didn't contain. That class of error should die in CI now, not in a post-merge incident comment.
+
 **Bar for a new exporter:** the exporter's CI must build its binary and run `dates.RunContract` against it green. The `formats.RunContract` bundle ships, but its CSV subtest assumes an exporter that implements all three §4 codecs (markdown, json, csv) — until the framework gains a `Runner.SupportedFormats` affordance, exporters whose CSV writer is incomplete cannot adopt the bundle as a hard gate. Wire it in as exporter parity catches up. See [`compat/README.md`](compat/README.md) for the one-file integration pattern.
 
 ## License and sign-off
