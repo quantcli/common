@@ -86,8 +86,8 @@ The exporter does not need a separate `go.mod` for compat tests — the standard
 |---|---|---|
 | `HelpDocumentsDateFlags` | §3 | `--help` mentions `--since` and `--until` and exits 0. |
 | `InvalidSinceValueFails` | §3, §4 | `--since obviously-not-a-date` exits non-zero, writes to stderr, leaves stdout empty. |
-| `HelpIsHermetic` | harness invariant | `--help` succeeds with all HTTP proxies pointed at an unreachable address. |
-| `FlagValidationIsHermetic` | harness invariant | A parse failure also produces no successful outbound request. |
+| `HelpIsHermetic` | §7 | `--help` succeeds with all HTTP proxies pointed at an unreachable address. |
+| `FlagValidationIsHermetic` | §7 | A parse failure also produces no successful outbound request. |
 
 When `compat.Runner.Subcommands` is set, every row above runs once per declared subcommand under `subcommand=NAME/...`.
 
@@ -97,7 +97,7 @@ When `compat.Runner.Subcommands` is set, every row above runs once per declared 
 |---|---|---|
 | `HelpDocumentsFormatFlag` | §4 | `--help` mentions `--format` and exits 0. |
 | `UnknownFormatFails` | §4 | `--format obviously-not-a-format` exits non-zero, writes to stderr, leaves stdout empty. |
-| `FlagValidationIsHermetic` | harness invariant | The unknown-format parse failure makes no successful outbound request. |
+| `FlagValidationIsHermetic` | §7 | The unknown-format parse failure makes no successful outbound request. |
 | `JSONIsArray` | §4 | `--format json` exits 0 and emits stdout that unmarshals as `[]any`. |
 | `CSVHasHeader` | §4 | `--format csv` exits 0 and emits at least one non-empty line on stdout (the header row, present even on an empty result). |
 | `DefaultIsMarkdown` | §4 | No `--format` flag produces byte-identical stdout to `--format markdown`. |
