@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 )
@@ -43,6 +44,14 @@ type Runner struct {
 	// rather than the root binary. Examples: crono's `biometrics`,
 	// `exercises`, `nutrition`, `servings`, `notes` each accept their
 	// own --since/--until.
+	//
+	// Each entry is one space-separated subcommand path. Single-word
+	// entries like "biometrics" target a top-level subcommand; nested
+	// paths like "workouts stats" target a leaf under a parent (as in
+	// liftoff's `liftoff-export workouts stats`). The dispatcher splits
+	// on whitespace before invoking the binary, so the cobra command
+	// tree receives separate argv entries rather than one space-joined
+	// argument.
 	//
 	// Empty means the surface is on the root binary; section bundles
 	// invoke the binary directly. Non-empty means each section's
@@ -78,11 +87,13 @@ type Runner struct {
 	// declare "all of §4".
 	SupportedFormats []string
 
-	// subcommand, when non-empty, is prepended to args on every Run
-	// call. Set via WithSubcommand; section bundles use it to dispatch
-	// per-subcommand. Callers do not need to set it directly — set
-	// Subcommands instead and let the bundle compose the dispatch.
-	subcommand string
+	// subcommandParts, when non-empty, is prepended to args on every Run
+	// call as separate argv entries. Set via WithSubcommand from a
+	// space-separated path (e.g. "workouts stats"); section bundles use
+	// it to dispatch per-subcommand. Callers do not need to set it
+	// directly — set Subcommands instead and let the bundle compose the
+	// dispatch.
+	subcommandParts []string
 }
 
 // Result captures everything observable about one CLI invocation. All
@@ -116,8 +127,8 @@ func (r Runner) Run(ctx context.Context, args ...string) (Result, error) {
 	defer cancel()
 
 	fullArgs := args
-	if r.subcommand != "" {
-		fullArgs = append([]string{r.subcommand}, args...)
+	if len(r.subcommandParts) > 0 {
+		fullArgs = append(append([]string(nil), r.subcommandParts...), args...)
 	}
 	cmd := exec.CommandContext(runCtx, r.Binary, fullArgs...)
 	// Default to an empty env so tests are hermetic. Callers opt into
@@ -176,24 +187,33 @@ func (r Runner) WithEnv(kv ...string) Runner {
 	return out
 }
 
-// WithSubcommand returns a copy of r whose Run prepends sub as the
-// first command-line argument. Section bundles use this internally to
-// dispatch per-subcommand when Runner.Subcommands is non-empty;
-// integrators normally set Subcommands and let the bundle do it.
+// WithSubcommand returns a copy of r whose Run prepends sub as a
+// command-line path before the caller's args. Section bundles use this
+// internally to dispatch per-subcommand when Runner.Subcommands is
+// non-empty; integrators normally set Subcommands and let the bundle
+// do it.
+//
+// sub is a space-separated path: "biometrics" targets a single
+// top-level subcommand; "workouts stats" targets a leaf under a parent
+// (each whitespace-separated word becomes its own argv entry, so the
+// cobra command tree resolves them as separate names rather than one
+// space-joined argument). Leading/trailing whitespace is ignored; the
+// empty string clears any previously-set path.
 //
 // Calling WithSubcommand again replaces (not stacks) the previous
-// value; nested subcommand paths are out of scope for the current
-// contract.
+// path.
 func (r Runner) WithSubcommand(sub string) Runner {
 	out := r
-	out.subcommand = sub
+	out.subcommandParts = strings.Fields(sub)
 	return out
 }
 
-// Subcommand returns the subcommand that Run will prepend to args, or
-// the empty string if none is set. Section bundles use this in subtest
-// names so failures point at the offending subcommand.
-func (r Runner) Subcommand() string { return r.subcommand }
+// Subcommand returns the subcommand path that Run will prepend to
+// args, or the empty string if none is set. Nested paths come back
+// joined with single spaces (e.g. "workouts stats"). Section bundles
+// use this in subtest names so failures point at the offending
+// subcommand.
+func (r Runner) Subcommand() string { return strings.Join(r.subcommandParts, " ") }
 
 // SupportsFormat reports whether name is one of the §4 codecs the
 // exporter declares it implements.
