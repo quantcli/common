@@ -181,9 +181,13 @@ func flagValidationIsHermetic(t *testing.T, r compat.Runner) {
 // covered implicitly so long as the integrator's data path returns
 // successfully.
 //
-// Skipped (not failed) if "json" is not in Runner.SupportedFormats.
+// Skipped (not failed) if "json" is not in Runner.SupportedFormats,
+// or if Runner.SkipDataPath is true.
 func jsonIsArray(t *testing.T, r compat.Runner) {
 	t.Helper()
+	if r.SkipDataPath {
+		t.Skipf("data-path subtests disabled via Runner.SkipDataPath")
+	}
 	if !r.SupportsFormat("json") {
 		t.Skipf("--format json not declared in Runner.SupportedFormats")
 	}
@@ -207,12 +211,16 @@ func jsonIsArray(t *testing.T, r compat.Runner) {
 // success with "no rows" for CSV — the header row is still required,
 // so even a zero-row CSV must have one line.
 //
-// Skipped (not failed) if "csv" is not in Runner.SupportedFormats.
+// Skipped (not failed) if "csv" is not in Runner.SupportedFormats,
+// or if Runner.SkipDataPath is true.
 // crono-export-cli and liftoff-export-cli are partial-codec exporters
 // today; the bundle becomes adoptable for them by declaring
 // SupportedFormats: []string{"markdown", "json"}.
 func csvHasHeader(t *testing.T, r compat.Runner) {
 	t.Helper()
+	if r.SkipDataPath {
+		t.Skipf("data-path subtests disabled via Runner.SkipDataPath")
+	}
 	if !r.SupportsFormat("csv") {
 		t.Skipf("--format csv not declared in Runner.SupportedFormats")
 	}
@@ -232,11 +240,14 @@ func csvHasHeader(t *testing.T, r compat.Runner) {
 // available without parsing markdown.
 //
 // Skipped (not failed) if "markdown" is not in
-// Runner.SupportedFormats. A CLI that does not declare markdown
-// cannot be expected to default to it, and forcing the equality check
-// would just measure noise.
+// Runner.SupportedFormats, or if Runner.SkipDataPath is true. A CLI
+// that does not declare markdown cannot be expected to default to it,
+// and forcing the equality check would just measure noise.
 func defaultIsMarkdown(t *testing.T, r compat.Runner) {
 	t.Helper()
+	if r.SkipDataPath {
+		t.Skipf("data-path subtests disabled via Runner.SkipDataPath")
+	}
 	if !r.SupportsFormat("markdown") {
 		t.Skipf("--format markdown not declared in Runner.SupportedFormats")
 	}

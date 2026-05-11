@@ -64,6 +64,36 @@ func TestRunContract_PartialCodec_SkipsCSV(t *testing.T) {
 	formats.RunContract(t, r)
 }
 
+// TestRunContract_SkipDataPath_GatesDataSubtests pins down the
+// Runner.SkipDataPath affordance: when set, the data-path subtests
+// (JSONIsArray / CSVHasHeader / DefaultIsMarkdown) skip even though
+// the codec is otherwise "supported". This is what lets liftoff /
+// crono / withings wire the bundle in for parse-level attestation
+// before their data paths are runnable in CI without credentials.
+//
+// The proof is adversarial. We build the stub with
+// STUBCLI_FORMATS=__never__ so every --format value (markdown, json,
+// csv, AND the unknown sentinel) is rejected with a non-zero exit.
+// The parse-level subtests still pass because they assert on the
+// rejection side. With SkipDataPath: true, the bundle is green.
+// Remove the SkipDataPath guard in jsonIsArray / csvHasHeader /
+// defaultIsMarkdown and this test fails because the data-path
+// subtests now run against a stub that rejects every codec.
+//
+// Critically, SupportedFormats is left nil so this exercises the
+// SkipDataPath gate independently of the codec-membership gate. The
+// pair compose: nil + SkipDataPath: true is the liftoff/crono shape
+// today.
+func TestRunContract_SkipDataPath_GatesDataSubtests(t *testing.T) {
+	bin := buildStub(t)
+	r := compat.Runner{
+		Binary:       bin,
+		Env:          []string{"STUBCLI_FORMATS=__never__"},
+		SkipDataPath: true,
+	}
+	formats.RunContract(t, r)
+}
+
 // TestSupportsFormat documents the nil-vs-empty-vs-subset behavior
 // of compat.Runner.SupportsFormat at the package level. The formats
 // bundle's skip guards rely on these semantics being stable.

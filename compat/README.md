@@ -102,7 +102,7 @@ When `compat.Runner.Subcommands` is set, every row above runs once per declared 
 | `CSVHasHeader` | §4 | `--format csv` exits 0 and emits at least one non-empty line on stdout (the header row, present even on an empty result). |
 | `DefaultIsMarkdown` | §4 | No `--format` flag produces byte-identical stdout to `--format markdown`. |
 
-`JSONIsArray`, `CSVHasHeader`, and `DefaultIsMarkdown` invoke the data path with no extra args beyond `--format`. Integrators whose data path needs credentials or other env to succeed pass them via `compat.Runner.Env`. As with `dates`, `subcommand=NAME/...` subtest groups fire when `Subcommands` is set.
+`JSONIsArray`, `CSVHasHeader`, and `DefaultIsMarkdown` invoke the data path with no extra args beyond `--format`. Integrators whose data path needs credentials or other env to succeed pass them via `compat.Runner.Env`; integrators whose data path is not runnable in CI at all today set `compat.Runner.SkipDataPath: true` (see below). As with `dates`, `subcommand=NAME/...` subtest groups fire when `Subcommands` is set.
 
 ### Partial-codec exporters: `Runner.SupportedFormats`
 
@@ -122,6 +122,21 @@ Semantics:
 - **Empty slice** — declares zero codecs. Rarely useful; effectively disables the data-path subtests. Use nil to mean "all of §4".
 
 **Per-CLI flip plan.** When a consumer wires the bundle into its CI with `SupportedFormats` matching its actual surface, the CONTRACT.md Status table's `--format` row for that CLI flips to **machine** for the codecs it declares. Codecs the CLI does not implement remain human-attested per-cell until the writer lands. Today the Status table has one cell per (CLI, codec) so the flip is per-cell, not per-row.
+
+### Credentialless CI: `Runner.SkipDataPath`
+
+The bundle's three data-path subtests (`JSONIsArray`, `CSVHasHeader`, `DefaultIsMarkdown`) invoke the CLI with a real `--format` value and expect a clean exit — which means the data path has to be runnable in the CI environment. For crono (env-var auth), liftoff (stored OAuth token), and withings (OAuth refresh token), that is not true today: a vanilla `--format json` invocation under `compat`'s default empty env exits non-zero with "not logged in" before the JSON-array check fires.
+
+`compat.Runner.SkipDataPath` is the explicit escape hatch: when true, the data-path subtests skip with reason `data-path subtests disabled via Runner.SkipDataPath`. The parse-level subtests still run because they assert on flag parsing, not on a working data path. This lets an exporter wire the bundle in for parse-level attestation today, then flip the bool back to false later (once auth is mockable in CI or secrets are provisioned) to promote its codec rows from human to machine.
+
+```go
+formats.RunContract(t, compat.Runner{
+    Binary:       os.Getenv("EXPORT_CLI_BIN"),
+    SkipDataPath: true, // CI does not have upstream credentials
+})
+```
+
+`SkipDataPath` and `SupportedFormats` compose: `nil` SupportedFormats + `SkipDataPath: true` is the typical liftoff/crono shape today (declare the full surface, but skip the data-path subtests until creds are available). Use `SupportedFormats: []string{...}` instead of `SkipDataPath: true` when the CLI structurally lacks a codec — those are two different gaps and should not be confused.
 
 ## What it does NOT cover yet
 
