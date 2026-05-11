@@ -69,6 +69,18 @@ jobs:
         if: steps.detect.outputs.has_compat == 'true'
         working-directory: compat
         run: go vet ./...
+      - name: gofmt (compat)
+        if: steps.detect.outputs.has_compat == 'true'
+        working-directory: compat
+        run: |
+          diff="$(gofmt -l .)"
+          if [ -n "$diff" ]; then
+            echo "gofmt diff in:"
+            echo "$diff"
+            echo "---"
+            gofmt -d .
+            exit 1
+          fi
       - name: go test (compat self-test)
         if: steps.detect.outputs.has_compat == 'true'
         working-directory: compat
