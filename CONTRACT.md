@@ -24,6 +24,7 @@ Each cell shows whether the section is implemented and how it is attested for th
 | `--format csv` | — | — | human |
 | `auth status` subcommand | human | human | human |
 | `prime` subcommand | human | human | human |
+| Hermetic `--help` / flag-validation (§7) | **machine** | **machine** | **machine** |
 
 All implemented sections shipped across all three CLIs (April 25, 2026). The table is per-cell rather than per-row so partial-codec adoption (e.g. crono/liftoff implementing markdown+json but not csv) is visible without losing fidelity. Cells marked "human" are candidates for promotion to **machine** as the compat library grows and exporters wire it in via `compat.Runner.SupportedFormats`.
 
@@ -109,16 +110,24 @@ GOTCHAS       non-obvious pitfalls
 
 Prime is short. It is not a man page. If it grows past one terminal screen, something belongs in this contract instead.
 
-## 7. Conformance (the compat library)
+## 7. Hermeticity
+
+A `--help` invocation and any flag-validation failure that exits non-zero before subcommand work begins must make no network requests. This lets an LLM agent or an offline user introspect the CLI — discover what it does and how to call it — without an authenticated session or a working network.
+
+The [`compat/`](compat/README.md) library pins this down on every PR by running the `--help` path and the flag-parse-failure path under a no-network environment.
+
+Out of scope: subcommands that do real work (`auth status`, `prime`, data subcommands) — by construction they need network access, and this section does not constrain them. `--version` is not yet specified here; it is a candidate for a future revision once a compat test pins it down.
+
+## 8. Conformance (the compat library)
 
 Conformance to this contract is verified by [`compat/`](compat/README.md), a small black-box Go test library that lives in this repo and is imported by every `*-export-cli` from its own CI. The current bundles:
 
-- [`compat/dates`](compat/README.md) — pins down §3: that `--since` / `--until` are documented in `--help`, and that an invalid value exits non-zero with a stderr-only error. The bundle additionally asserts that `--help` and flag-validation failures make no network request — that is a harness invariant the framework defends on every PR, not a property §3 itself promises.
-- [`compat/formats`](compat/README.md) — pins down §4: that `--format` is documented, an unknown value exits non-zero with a stderr-only error, `--format json` emits a parseable JSON array, `--format csv` emits at least a header row, and the default is byte-identical to `--format markdown`. The `--format` parse-failure path is hermetic on the same harness-invariant basis as the dates bundle.
+- [`compat/dates`](compat/README.md) — pins down §3: that `--since` / `--until` are documented in `--help`, and that an invalid value exits non-zero with a stderr-only error. The bundle also pins down [§7](#7-hermeticity) for both the `--help` path and the date-parse-failure path.
+- [`compat/formats`](compat/README.md) — pins down §4: that `--format` is documented, an unknown value exits non-zero with a stderr-only error, `--format json` emits a parseable JSON array, `--format csv` emits at least a header row, and the default is byte-identical to `--format markdown`. The bundle additionally pins down [§7](#7-hermeticity) for the `--format` parse-failure path.
 
 A new exporter is not "in" the family until its CI runs at least the `dates` bundle green. The `formats` bundle ships with a `Runner.SupportedFormats` affordance so partial-codec exporters can adopt it without an immediate `--format csv` failure: declare the codecs you actually implement and the bundle skips codec-specific subtests for the rest. Each exporter's per-codec cells in the Status table flip from `human` to **machine** as it wires the bundle in; codecs not yet implemented stay at `—` until the writer lands.
 
-## 8. Versioning and releases
+## 9. Versioning and releases
 
 Semantic versioning. User-visible bug fix → patch. New subcommand or flag → minor. Removed/renamed flag → major. Releases cut via `gh release create` against the relevant tag; goreleaser builds binaries for darwin/linux/windows × amd64/arm64 and publishes the cask to `quantcli/homebrew-tap`.
 
