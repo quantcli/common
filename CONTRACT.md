@@ -8,7 +8,7 @@ The contract exists so that, once you have used one of these CLIs, the others fe
 
 Each cell shows whether the section is implemented and how it is attested for that CLI:
 
-- **machine** — verified by a [`compat/`](compat/README.md) bundle on every PR.
+- **machine** — covered by a [`compat/`](compat/README.md) bundle that self-tests green in `quantcli/common`'s own CI on every PR. During this partial-adoption window, **machine** attests that the bundle exists and is green here; the explicit next milestone is the per-exporter consumer-wire PRs that will run the bundle directly in each `*-export-cli`'s own CI.
 - **human** — implemented; verified only by review at merge time.
 - **—** — not implemented yet.
 
@@ -112,15 +112,15 @@ Prime is short. It is not a man page. If it grows past one terminal screen, some
 
 ## 7. Hermeticity
 
-A `--help` invocation and any flag-validation failure that exits non-zero before subcommand work begins must make no network requests. This lets an LLM agent or an offline user introspect the CLI — discover what it does and how to call it — without an authenticated session or a working network.
+A `--help` invocation and any flag-validation failure that exits non-zero before subcommand work begins must make no network requests. This lets an LLM agent or an offline user introspect the CLI — discover what it does and how to call it — without an authenticated session or a working network. "Before subcommand work" includes flag-parse failures inside subcommands (e.g. `liftoff-export workouts list --since lol`): cobra parses subcommand flags inside the subcommand layer, but that parse runs before any data fetch, so it is also a §7 case.
 
-The [`compat/`](compat/README.md) library pins this down on every PR by running the `--help` path and the flag-parse-failure path under a no-network environment.
+The [`compat/`](compat/README.md) library pins this down by running the `--help` path and the flag-parse-failure path under a no-network environment; per-repo wiring of that library is described in [§8](#8-conformance-the-compat-library).
 
-Out of scope: subcommands that do real work (`auth status`, `prime`, data subcommands) — by construction they need network access, and this section does not constrain them. `--version` is not yet specified here; it is a candidate for a future revision once a compat test pins it down.
+Out of scope: subcommands that do real work (`auth status`, `prime`, data subcommands) — by construction they need network access, and this section does not constrain them. `--version` is not yet specified here; it is a candidate for a future revision once a compat test pins it down. When that revision lands, `--version` joins this rule — version banners must not dial out (e.g. for update checks) without explicit user opt-in.
 
 ## 8. Conformance (the compat library)
 
-Conformance to this contract is verified by [`compat/`](compat/README.md), a small black-box Go test library that lives in this repo and is imported by every `*-export-cli` from its own CI. The current bundles:
+Conformance to this contract is verified by [`compat/`](compat/README.md), a small black-box Go test library that lives in this repo and is imported by every `*-export-cli` from its own CI as adoption rolls out per-repo. Today the bundles self-test green in `quantcli/common`'s own CI on every PR; the consumer-wire PRs that import them into each `*-export-cli`'s CI are the next milestone, one per exporter. The current bundles:
 
 - [`compat/dates`](compat/README.md) — pins down §3: that `--since` / `--until` are documented in `--help`, and that an invalid value exits non-zero with a stderr-only error. The bundle also pins down [§7](#7-hermeticity) for both the `--help` path and the date-parse-failure path.
 - [`compat/formats`](compat/README.md) — pins down §4: that `--format` is documented, an unknown value exits non-zero with a stderr-only error, `--format json` emits a parseable JSON array, `--format csv` emits at least a header row, and the default is byte-identical to `--format markdown`. The bundle additionally pins down [§7](#7-hermeticity) for the `--format` parse-failure path.
