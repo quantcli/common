@@ -39,6 +39,19 @@
 // rather than running it against a stub that would reject the call.
 // When unset, all three §4 codecs are accepted.
 //
+// STUBCLI_NEEDS_TOKEN=1, when set, makes the stub simulate a
+// credentialless-CI failure: `--help` and `--format <unknown>` still
+// behave normally (the hook does not fire during parse), but a
+// successful parse of `--format <known codec>` does NOT emit data —
+// instead the stub exits non-zero with `error: not logged in` on
+// stderr and an empty stdout. This is the failure mode real
+// credentialed exporters (crono / liftoff / withings) hit in CI:
+// flag parsing succeeds, the data call fails because no token is
+// available. The compat/formats self-test uses this to prove that
+// Runner.SkipDataPath is load-bearing against the token-style
+// adversarial model — not just the broader STUBCLI_FORMATS=__never__
+// reject-everything model.
+//
 // stubcli never makes a network request.
 package main
 
@@ -158,6 +171,19 @@ func parseAndEmit(progName string, args []string) {
 	if *until != "" && !validDate(*until) {
 		fmt.Fprintf(os.Stderr, "error: invalid value for --until: %q\n", *until)
 		os.Exit(2)
+	}
+
+	// STUBCLI_NEEDS_TOKEN=1 simulates a credentialless-CI failure:
+	// flags parsed cleanly, but the data call fails because no token
+	// is available. Mirrors the shape real credentialed exporters
+	// (crono / liftoff / withings) hit when run from a CI environment
+	// without secrets. Exit code 1 (data-call failure) is distinct
+	// from the 2 used for parse failures above, so a test that
+	// expected a parse-rejection but accidentally took the data path
+	// sees a different shape.
+	if os.Getenv("STUBCLI_NEEDS_TOKEN") == "1" {
+		fmt.Fprintln(os.Stderr, "error: not logged in")
+		os.Exit(1)
 	}
 
 	// The stub has no upstream, so it always reports the empty data
