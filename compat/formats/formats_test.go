@@ -94,6 +94,36 @@ func TestRunContract_SkipDataPath_GatesDataSubtests(t *testing.T) {
 	formats.RunContract(t, r)
 }
 
+// TestRunContract_SkipDataPath_WithNotLoggedIn is the token-style
+// adversarial complement to TestRunContract_SkipDataPath_GatesDataSubtests.
+//
+// The __never__ variant proves the SkipDataPath guard is load-bearing
+// against a stub that rejects every --format value at parse time. This
+// variant proves it is load-bearing against the failure mode real
+// credentialed exporters (crono / liftoff / withings) actually hit in
+// CI: --format parses cleanly, but the data call fails non-zero with
+// a "not logged in"-style error because no token is available.
+//
+// STUBCLI_NEEDS_TOKEN=1 produces exactly that shape. Parse-level
+// subtests still pass (--help has no token check; --format
+// obviously-not-a-format is rejected at parse, before the token
+// check). Data-path subtests skip via SkipDataPath.
+//
+// Delete the SkipDataPath guard in jsonIsArray / csvHasHeader /
+// defaultIsMarkdown and this test fails with `--format <codec> exited
+// 1; stderr=…not logged in…` — a distinct failure shape from the
+// __never__ variant's `…invalid value for --format…`, so the two
+// adversarial models cover different regressions of the same guard.
+func TestRunContract_SkipDataPath_WithNotLoggedIn(t *testing.T) {
+	bin := buildStub(t)
+	r := compat.Runner{
+		Binary:       bin,
+		Env:          []string{"STUBCLI_NEEDS_TOKEN=1"},
+		SkipDataPath: true,
+	}
+	formats.RunContract(t, r)
+}
+
 // TestSupportsFormat documents the nil-vs-empty-vs-subset behavior
 // of compat.Runner.SupportsFormat at the package level. The formats
 // bundle's skip guards rely on these semantics being stable.
