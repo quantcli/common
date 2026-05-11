@@ -64,6 +64,61 @@ func TestRunContract_PartialCodec_SkipsCSV(t *testing.T) {
 	formats.RunContract(t, r)
 }
 
+// TestRunContract_NonHermeticDataPath_SkipsDataPath pins down the
+// Runner.DataPathHermetic affordance: an exporter whose data path
+// requires non-hermetic state (auth token, live API, env credentials)
+// must pass the bundle even though every --format invocation would
+// fail at the data-emission step.
+//
+// The proof is adversarial. We build the stub with
+// STUBCLI_NEEDS_TOKEN=1 so it actively rejects every successful
+// --format value with "not logged in" on stderr and exit 2 — the
+// withings/crono/liftoff shape today. Then we set
+// DataPathHermetic: compat.BoolPtr(false) on the Runner so the
+// bundle skips JSONIsArray, CSVHasHeader, and DefaultIsMarkdown.
+// The whole suite must pass: parse-level subtests still run because
+// they exercise the format-validation path (which fires before the
+// "not logged in" branch in the stub), and the data-path subtests
+// skip cleanly.
+//
+// If anyone deletes the IsDataPathHermetic skip guard in jsonIsArray,
+// csvHasHeader, or defaultIsMarkdown, this test fails because the
+// stub rejects every --format call with "not logged in" and the
+// data-path subtest runs against it.
+func TestRunContract_NonHermeticDataPath_SkipsDataPath(t *testing.T) {
+	bin := buildStub(t)
+	r := compat.Runner{
+		Binary:           bin,
+		Env:              []string{"STUBCLI_NEEDS_TOKEN=1"},
+		DataPathHermetic: compat.BoolPtr(false),
+	}
+	formats.RunContract(t, r)
+}
+
+// TestRunContract_NonHermeticDataPath_BeatsSupportedFormats pins
+// down the documented composition of DataPathHermetic and
+// SupportedFormats: when a CLI's data path is non-hermetic, the
+// data-path subtests skip on the hermeticity check FIRST so the
+// integrator does not have to lie about the codec surface to opt
+// out. Without that ordering, a non-hermetic CLI that supports all
+// three §4 codecs would still hit the stub's "not logged in" path
+// because SupportsFormat returns true for every codec.
+//
+// The stub is built with STUBCLI_NEEDS_TOKEN=1 (rejects every
+// --format value at data emission) and the Runner declares
+// DataPathHermetic: false alongside SupportedFormats covering all
+// three §4 codecs. The bundle must pass.
+func TestRunContract_NonHermeticDataPath_BeatsSupportedFormats(t *testing.T) {
+	bin := buildStub(t)
+	r := compat.Runner{
+		Binary:           bin,
+		Env:              []string{"STUBCLI_NEEDS_TOKEN=1"},
+		DataPathHermetic: compat.BoolPtr(false),
+		SupportedFormats: []string{"markdown", "json", "csv"},
+	}
+	formats.RunContract(t, r)
+}
+
 // TestSupportsFormat documents the nil-vs-empty-vs-subset behavior
 // of compat.Runner.SupportsFormat at the package level. The formats
 // bundle's skip guards rely on these semantics being stable.

@@ -123,6 +123,32 @@ Semantics:
 
 **Per-CLI flip plan.** When a consumer wires the bundle into its CI with `SupportedFormats` matching its actual surface, the CONTRACT.md Status table's `--format` row for that CLI flips to **machine** for the codecs it declares. Codecs the CLI does not implement remain human-attested per-cell until the writer lands. Today the Status table has one cell per (CLI, codec) so the flip is per-cell, not per-row.
 
+### Non-hermetic data paths: `Runner.DataPathHermetic`
+
+`SupportedFormats` covers the case where a CLI doesn't implement a codec. A separate problem is when a CLI implements every codec but the data path itself can't run from a clean CI environment — `withings-export-cli` needs an OAuth token, `crono-export-cli` needs `CRONOMETER_USERNAME`/`CRONOMETER_PASSWORD`, `liftoff-export-cli` is the same shape. For those, `JSONIsArray`, `CSVHasHeader`, and `DefaultIsMarkdown` would invoke the CLI with valid `--format` values and fail on the unrelated "not logged in" error, breaking the compat job.
+
+Setting `SupportedFormats: []string{}` to disable the data-path subtests would lie about the codec surface and is exactly the misuse the field's docstring warns against. Use `Runner.DataPathHermetic` instead:
+
+```go
+formats.RunContract(t, compat.Runner{
+    Binary:           os.Getenv("EXPORT_CLI_BIN"),
+    DataPathHermetic: compat.BoolPtr(false), // data path needs auth/env
+})
+```
+
+Semantics:
+
+- **Nil (default)** — treated as hermetic. The data-path subtests run, matching the bundle's pre-`DataPathHermetic` behavior so existing wirings do not regress.
+- **`compat.BoolPtr(true)`** — explicit hermetic claim. Equivalent to nil but auditable in the wiring.
+- **`compat.BoolPtr(false)`** — non-hermetic data path. `JSONIsArray`, `CSVHasHeader`, and `DefaultIsMarkdown` skip via `t.Skipf` with a named reason. The skip fires **before** the `SupportedFormats` check, so a non-hermetic CLI does not have to lie about its codec surface to opt out. The parse-level subtests (`HelpDocumentsFormatFlag`, `UnknownFormatFails`, `FlagValidationIsHermetic`) run regardless.
+
+**Per-CLI flip plan.** A CLI running with `DataPathHermetic: compat.BoolPtr(false)` attests **only** the parse-level cells in CONTRACT.md's Status table — the codec data-path cells (`JSONIsArray`/`CSVHasHeader`/`DefaultIsMarkdown`) remain **human**-attested. Two paths to flip those cells to machine:
+
+1. Wire credentials or a `--dry-run`-style affordance into CI so the data path is runnable, then drop `DataPathHermetic` (or set it to `compat.BoolPtr(true)`).
+2. Land a per-CLI hermetic mode (e.g. recorded HTTP fixtures, a fake-server flag) that lets the data path return successfully without secrets.
+
+Both are per-CLI changes — out of scope of the compat library — and both are tracked in the consumer-wiring tickets, not here.
+
 ## What it does NOT cover yet
 
 The actual local-midnight semantics of `--since 2026-04-15` (the harmonization that just landed across crono/liftoff/withings) is still **human-attested** in the status table. Asserting it black-box requires either:
@@ -146,3 +172,5 @@ This module has its own tests that run each bundle against a stub CLI in `intern
 The stub has two modes (`STUBCLI_MODE=flat` and `STUBCLI_MODE=cobra`). The flat-mode self-tests exercise the original Runner shape; the cobra-mode self-tests exercise `Subcommands`-based dispatch. In cobra mode, the stub's root `--help` deliberately omits `--since/--until/--format`, so the cobra-mode self-tests fail fast if `compat.Runner` ever stops prepending the subcommand. The stub emits an empty data set per `--format` codec (`[]` for json, a single header row for csv, nothing for markdown) so the formats bundle's data-path subtests run hermetically. There is also a focused unit test for `Runner.WithSubcommand` using an `argecho` helper that just prints `os.Args`.
 
 The stub additionally honors `STUBCLI_FORMATS` (comma-separated) to restrict which codecs it will accept at parse time — used by the formats bundle's `TestRunContract_PartialCodec_SkipsCSV` self-test. Setting `STUBCLI_FORMATS=markdown,json` makes the stub reject `--format csv`, so the partial-codec self-test proves the `SupportedFormats` skip is actually load-bearing: without it, the test would fail at `CSVHasHeader` because the stub rejects csv.
+
+Similarly, `STUBCLI_NEEDS_TOKEN=1` simulates a non-hermetic data path: format parsing still succeeds (so the unknown-format probe and help-documents-flag subtests still pass) but every successful `--format` invocation fails with "not logged in" on stderr and exit 2. The `TestRunContract_NonHermeticDataPath_SkipsDataPath` self-test pairs this with `DataPathHermetic: compat.BoolPtr(false)` to prove the skip guard in `JSONIsArray`/`CSVHasHeader`/`DefaultIsMarkdown` is load-bearing — without it, the bundle would fail on the stub's "not logged in" path. A second self-test (`TestRunContract_NonHermeticDataPath_BeatsSupportedFormats`) pins the documented ordering: hermeticity skips before `SupportsFormat`, so a non-hermetic CLI does not have to lie about its codec surface.

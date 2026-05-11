@@ -39,6 +39,18 @@
 // rather than running it against a stub that would reject the call.
 // When unset, all three §4 codecs are accepted.
 //
+// STUBCLI_NEEDS_TOKEN, when set to "1", simulates a non-hermetic
+// data path: format parsing still succeeds (so the unknown-format
+// probe still fires correctly and the help-documents-flag subtest
+// still passes), but any successful --format value fails at the
+// data-emission step with a "not logged in" message on stderr and
+// exit 2. This mirrors the withings / crono / liftoff shape where
+// the data path needs an OAuth token or env credentials to succeed.
+// The compat/formats self-test uses this to prove that
+// Runner.DataPathHermetic actually skips the data-path subtests
+// rather than running them against a CLI that would reject every
+// --format call.
+//
 // stubcli never makes a network request.
 package main
 
@@ -157,6 +169,17 @@ func parseAndEmit(progName string, args []string) {
 	}
 	if *until != "" && !validDate(*until) {
 		fmt.Fprintf(os.Stderr, "error: invalid value for --until: %q\n", *until)
+		os.Exit(2)
+	}
+
+	// Non-hermetic data-path simulation. Parse-level checks (format,
+	// since, until) have already fired above so the parse-failure
+	// subtests still see the correct behavior; this branch only
+	// fires on an otherwise-valid invocation and stands in for the
+	// "not logged in" failure mode of withings/crono/liftoff data
+	// paths.
+	if os.Getenv("STUBCLI_NEEDS_TOKEN") == "1" {
+		fmt.Fprintln(os.Stderr, "error: not logged in")
 		os.Exit(2)
 	}
 

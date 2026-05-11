@@ -20,10 +20,16 @@
 // The data-path subtests (JSONIsArray, CSVHasHeader, DefaultIsMarkdown)
 // invoke the CLI with no extra args beyond `--format`. Integrators
 // whose CLI requires extra args to succeed (e.g. credentials via env)
-// must arrange for those to be present via Runner.Env. Exporters
-// whose data path is not yet runnable from a clean CI environment
-// should wire the bundle in once it is — the parse-time subtests
-// alone are not enough to claim machine attestation for §4.
+// must arrange for those to be present via Runner.Env.
+//
+// Exporters whose data path is not yet runnable from a clean CI
+// environment can adopt the bundle for its parse-level surface alone
+// by setting compat.Runner.DataPathHermetic to compat.BoolPtr(false).
+// The data-path subtests then skip with a named reason; the
+// parse-level subtests still run. The §4 status row should reflect
+// machine attestation only for the parse-level cells until a
+// per-CLI hermetic data path is wired (or credentials are shipped
+// to CI another way — out of scope here).
 //
 // Partial-codec exporters can declare which §4 codecs they implement
 // via compat.Runner.SupportedFormats. Codec-specific subtests skip
@@ -31,6 +37,11 @@
 // has not yet added a CSV writer can adopt the bundle without
 // failure. The parse-level subtests run regardless because they
 // assert on the --format flag itself, not on a specific codec.
+//
+// DataPathHermetic and SupportedFormats compose: when the data path
+// is non-hermetic the data-path subtests skip first (regardless of
+// SupportedFormats), so a non-hermetic CLI does not have to lie
+// about its codec surface to opt out.
 //
 // Exporter usage:
 //
@@ -181,9 +192,18 @@ func flagValidationIsHermetic(t *testing.T, r compat.Runner) {
 // covered implicitly so long as the integrator's data path returns
 // successfully.
 //
-// Skipped (not failed) if "json" is not in Runner.SupportedFormats.
+// Skipped (not failed) when:
+//
+//   - Runner.DataPathHermetic is &false — the CLI's data path needs
+//     non-hermetic state (auth, live API). Checked first so a
+//     non-hermetic CLI does not have to lie about its codec surface.
+//   - "json" is not in Runner.SupportedFormats — the CLI does not
+//     implement the JSON codec.
 func jsonIsArray(t *testing.T, r compat.Runner) {
 	t.Helper()
+	if !r.IsDataPathHermetic() {
+		t.Skipf("data path not hermetic; integrator declared DataPathHermetic=false")
+	}
 	if !r.SupportsFormat("json") {
 		t.Skipf("--format json not declared in Runner.SupportedFormats")
 	}
@@ -207,12 +227,19 @@ func jsonIsArray(t *testing.T, r compat.Runner) {
 // success with "no rows" for CSV — the header row is still required,
 // so even a zero-row CSV must have one line.
 //
-// Skipped (not failed) if "csv" is not in Runner.SupportedFormats.
-// crono-export-cli and liftoff-export-cli are partial-codec exporters
-// today; the bundle becomes adoptable for them by declaring
-// SupportedFormats: []string{"markdown", "json"}.
+// Skipped (not failed) when:
+//
+//   - Runner.DataPathHermetic is &false — the CLI's data path needs
+//     non-hermetic state (auth, live API). Checked first.
+//   - "csv" is not in Runner.SupportedFormats. crono-export-cli and
+//     liftoff-export-cli are partial-codec exporters today; the
+//     bundle becomes adoptable for them by declaring
+//     SupportedFormats: []string{"markdown", "json"}.
 func csvHasHeader(t *testing.T, r compat.Runner) {
 	t.Helper()
+	if !r.IsDataPathHermetic() {
+		t.Skipf("data path not hermetic; integrator declared DataPathHermetic=false")
+	}
 	if !r.SupportsFormat("csv") {
 		t.Skipf("--format csv not declared in Runner.SupportedFormats")
 	}
@@ -231,12 +258,18 @@ func csvHasHeader(t *testing.T, r compat.Runner) {
 // the strongest behavioral statement of "markdown is the default"
 // available without parsing markdown.
 //
-// Skipped (not failed) if "markdown" is not in
-// Runner.SupportedFormats. A CLI that does not declare markdown
-// cannot be expected to default to it, and forcing the equality check
-// would just measure noise.
+// Skipped (not failed) when:
+//
+//   - Runner.DataPathHermetic is &false — the CLI's data path needs
+//     non-hermetic state (auth, live API). Checked first.
+//   - "markdown" is not in Runner.SupportedFormats. A CLI that does
+//     not declare markdown cannot be expected to default to it, and
+//     forcing the equality check would just measure noise.
 func defaultIsMarkdown(t *testing.T, r compat.Runner) {
 	t.Helper()
+	if !r.IsDataPathHermetic() {
+		t.Skipf("data path not hermetic; integrator declared DataPathHermetic=false")
+	}
 	if !r.SupportsFormat("markdown") {
 		t.Skipf("--format markdown not declared in Runner.SupportedFormats")
 	}

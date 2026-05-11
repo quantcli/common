@@ -78,6 +78,43 @@ type Runner struct {
 	// declare "all of §4".
 	SupportedFormats []string
 
+	// DataPathHermetic declares whether the CLI's data path is
+	// runnable from a clean CI environment. It gates the data-path
+	// subtests in compat/formats (JSONIsArray, CSVHasHeader,
+	// DefaultIsMarkdown) for exporters whose data path requires
+	// non-hermetic state (an OAuth token, a live API, env credentials)
+	// — without those subtests, a CLI that has not yet wired secrets
+	// to CI can still adopt the bundle for its parse-level surface.
+	//
+	// Tristate via pointer:
+	//
+	//   - nil (default) — treated as hermetic. The data-path subtests
+	//     run, matching the bundle's pre-DataPathHermetic behavior
+	//     for the in-tree stub and any existing wirings. This
+	//     mirrors SupportedFormats's nil-is-permissive idiom.
+	//   - &true — explicit hermetic claim, same behavior as nil but
+	//     auditable in the integrator's wiring.
+	//   - &false — non-hermetic data path. The data-path subtests
+	//     skip via t.Skipf with a named reason. The skip fires
+	//     BEFORE the SupportedFormats check, so a non-hermetic CLI
+	//     does not have to lie about its codec surface to disable
+	//     the data-path subtests.
+	//
+	// DataPathHermetic does NOT relax the parse-level subtests
+	// (HelpDocumentsFormatFlag, UnknownFormatFails,
+	// FlagValidationIsHermetic). Those assert on the --format flag
+	// itself, not on the data path, and run regardless.
+	//
+	// The §4 status row should only flip to machine for an exporter
+	// that runs with DataPathHermetic nil/&true OR ships credentials
+	// to CI another way (out of scope for the compat library). A CLI
+	// running with &false attests the parse-level cells only; the
+	// codec data-path cells remain human-attested until a per-CLI
+	// hermetic data path is wired.
+	//
+	// See IsDataPathHermetic for the accessor section bundles use.
+	DataPathHermetic *bool
+
 	// subcommand, when non-empty, is prepended to args on every Run
 	// call. Set via WithSubcommand; section bundles use it to dispatch
 	// per-subcommand. Callers do not need to set it directly — set
@@ -194,6 +231,30 @@ func (r Runner) WithSubcommand(sub string) Runner {
 // the empty string if none is set. Section bundles use this in subtest
 // names so failures point at the offending subcommand.
 func (r Runner) Subcommand() string { return r.subcommand }
+
+// IsDataPathHermetic reports whether the data-path subtests in
+// section bundles should run against this Runner.
+//
+// nil DataPathHermetic is treated as hermetic (true). Non-nil pointers
+// are dereferenced. Section bundles consult this when deciding whether
+// to skip a data-path subtest; integrators normally do not call it
+// directly — populate DataPathHermetic and let the bundle dispatch.
+func (r Runner) IsDataPathHermetic() bool {
+	if r.DataPathHermetic == nil {
+		return true
+	}
+	return *r.DataPathHermetic
+}
+
+// BoolPtr returns a pointer to b. It is a small ergonomic helper for
+// the few Runner fields (DataPathHermetic today) where the nil/non-nil
+// distinction encodes "use default" vs "explicit value".
+//
+//	formats.RunContract(t, compat.Runner{
+//	    Binary:           bin,
+//	    DataPathHermetic: compat.BoolPtr(false),
+//	})
+func BoolPtr(b bool) *bool { return &b }
 
 // SupportsFormat reports whether name is one of the §4 codecs the
 // exporter declares it implements.

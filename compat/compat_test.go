@@ -62,6 +62,51 @@ func TestWithSubcommand_DoesNotMutateReceiver(t *testing.T) {
 	}
 }
 
+// TestRunner_DataPathHermeticDefault pins down the documented
+// zero-value semantics of Runner.DataPathHermetic so the formats
+// bundle's skip guard cannot drift away from the contract:
+//
+//   - nil (the struct-literal default) is treated as hermetic, matching
+//     the bundle's pre-DataPathHermetic behavior. Existing wirings
+//     that omit the field continue to run the data-path subtests.
+//   - &true is the explicit-hermetic claim, equivalent to nil.
+//   - &false is the opt-out: the data-path subtests skip.
+//
+// IsDataPathHermetic is the accessor section bundles consult; this
+// test asserts on it directly so the contract is checkable without
+// shelling out to the stub.
+func TestRunner_DataPathHermeticDefault(t *testing.T) {
+	cases := []struct {
+		name string
+		r    compat.Runner
+		want bool
+	}{
+		{"nil (default)", compat.Runner{Binary: "ignored"}, true},
+		{"&true (explicit)", compat.Runner{Binary: "ignored", DataPathHermetic: compat.BoolPtr(true)}, true},
+		{"&false (opt out)", compat.Runner{Binary: "ignored", DataPathHermetic: compat.BoolPtr(false)}, false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.r.IsDataPathHermetic(); got != tc.want {
+				t.Errorf("IsDataPathHermetic() = %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestBoolPtr asserts the helper round-trips both bool values. It
+// is small but pins down the helper's contract so callers can rely
+// on it for Runner literal ergonomics.
+func TestBoolPtr(t *testing.T) {
+	if p := compat.BoolPtr(true); p == nil || *p != true {
+		t.Errorf("BoolPtr(true) = %v; want pointer to true", p)
+	}
+	if p := compat.BoolPtr(false); p == nil || *p != false {
+		t.Errorf("BoolPtr(false) = %v; want pointer to false", p)
+	}
+}
+
 // TestRun_TimeoutReturnsError exercises the timeout branch so the
 // Runner's error contract (non-zero exit is not an error; timeout is)
 // stays load-bearing.
