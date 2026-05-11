@@ -67,6 +67,20 @@ func TestContractDates(t *testing.T) {
 
 Each subcommand is verified under a `subcommand=NAME/...` subtree, so a regression in any single one fails as a named subtest instead of masking the rest.
 
+Nested-path subcommands are supported by passing a space-separated string. The dispatcher splits on whitespace so each segment becomes its own argv entry, which is what cobra's command tree resolves against:
+
+```go
+dates.RunContract(t, compat.Runner{
+    Binary: bin,
+    Subcommands: []string{
+        "bodyweights list", "bodyweights stats",
+        "workouts list", "workouts stats",
+    },
+})
+```
+
+This is the pattern liftoff-export uses, where `--since`/`--until` live on two-level leaves (`liftoff-export workouts stats`) rather than top-level subcommands.
+
 ### CI workflow
 
 ```yaml
