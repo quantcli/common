@@ -67,6 +67,8 @@ When neither flag is given, each subcommand picks its own default (typical: `7d`
 
 A single `--format` flag, not separate `--json` / `--csv` flags. `markdown` is the default because terminals are humans by default; agents pass `--format json` once.
 
+CLIs MAY implement a subset of these codecs. A CLI MUST implement `markdown` and `json`; `csv` is recommended but optional. The Status table tracks per-CLI implementation per codec, and `compat.Runner.SupportedFormats` lets the conformance bundle target the declared subset so a partial-codec exporter can adopt the bundle without an immediate `--format csv` failure. Declaring less than `{markdown, json}` is non-conforming — markdown is required for human terminal use, json is required for agent/script use, and either alone leaves one of the two use cases unserved.
+
 Output rules:
 
 - **stdout**: data only, in the requested format.
