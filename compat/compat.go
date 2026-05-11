@@ -54,6 +54,30 @@ type Runner struct {
 	// (e.g. compat/dates) read it and dispatch via WithSubcommand.
 	Subcommands []string
 
+	// SupportedFormats declares which §4 output codecs the exporter
+	// implements. Used by compat/formats to gate the codec-specific
+	// data-path subtests.
+	//
+	// Default (nil) means the exporter declares the full §4 surface
+	// (markdown, json, csv); compat/formats runs every subtest.
+	//
+	// Non-nil declares an explicit subset — e.g.
+	// []string{"markdown", "json"} for a CLI that has not yet added a
+	// CSV writer. The bundle's JSONIsArray, CSVHasHeader, and
+	// DefaultIsMarkdown subtests skip via t.Skipf when their codec is
+	// not in the list, naming the missing codec so the gap is visible
+	// in test output rather than masked.
+	//
+	// SupportedFormats does NOT relax the parse-level subtests
+	// (HelpDocumentsFormatFlag, UnknownFormatFails,
+	// FlagValidationIsHermetic). Those assert on the --format flag
+	// itself, not on a specific codec, and run regardless.
+	//
+	// An empty slice declares zero supported codecs — rarely useful,
+	// and effectively disables the data-path subtests. Use nil to
+	// declare "all of §4".
+	SupportedFormats []string
+
 	// subcommand, when non-empty, is prepended to args on every Run
 	// call. Set via WithSubcommand; section bundles use it to dispatch
 	// per-subcommand. Callers do not need to set it directly — set
@@ -170,3 +194,27 @@ func (r Runner) WithSubcommand(sub string) Runner {
 // the empty string if none is set. Section bundles use this in subtest
 // names so failures point at the offending subcommand.
 func (r Runner) Subcommand() string { return r.subcommand }
+
+// SupportsFormat reports whether name is one of the §4 codecs the
+// exporter declares it implements.
+//
+// A nil SupportedFormats is treated as "all of §4" — SupportsFormat
+// returns true for any name. When SupportedFormats is non-nil
+// (including empty), only names present in the slice return true.
+// String comparison is exact: callers pass the canonical CONTRACT.md
+// codec names ("markdown", "json", "csv").
+//
+// Section bundles consult this when deciding whether to skip a
+// codec-specific subtest. Integrators normally do not call it
+// directly — populate SupportedFormats and let the bundle dispatch.
+func (r Runner) SupportsFormat(name string) bool {
+	if r.SupportedFormats == nil {
+		return true
+	}
+	for _, f := range r.SupportedFormats {
+		if f == name {
+			return true
+		}
+	}
+	return false
+}

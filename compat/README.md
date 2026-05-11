@@ -104,7 +104,24 @@ When `compat.Runner.Subcommands` is set, every row above runs once per declared 
 
 `JSONIsArray`, `CSVHasHeader`, and `DefaultIsMarkdown` invoke the data path with no extra args beyond `--format`. Integrators whose data path needs credentials or other env to succeed pass them via `compat.Runner.Env`. As with `dates`, `subcommand=NAME/...` subtest groups fire when `Subcommands` is set.
 
-**Exporter parity note (as of bundle landing):** §4 lists three required codecs (markdown, json, csv), but only `withings-export-cli` implements all three today; `crono-export-cli` and `liftoff-export-cli` reject `--format csv`. Until the framework grows a `Runner.SupportedFormats` affordance (or those CLIs add CSV writers), the `CSVHasHeader` subtest fails against them. That is why the §4 row in CONTRACT.md's Status table remains human-attested at bundle landing — it will flip to **machine** once exporter parity catches up.
+### Partial-codec exporters: `Runner.SupportedFormats`
+
+§4 lists three required codecs (markdown, json, csv), but `crono-export-cli` and `liftoff-export-cli` reject `--format csv` today — only `withings-export-cli` implements all three. The bundle is still adoptable by partial-codec exporters via `compat.Runner.SupportedFormats`:
+
+```go
+formats.RunContract(t, compat.Runner{
+    Binary:           os.Getenv("EXPORT_CLI_BIN"),
+    SupportedFormats: []string{"markdown", "json"}, // declare what you implement
+})
+```
+
+Semantics:
+
+- **Nil (default)** — exporter declares the full §4 surface. Every subtest runs.
+- **Non-nil subset** — `JSONIsArray`, `CSVHasHeader`, and `DefaultIsMarkdown` skip via `t.Skipf` when their codec is not in the slice. The skip names the missing codec so the gap is visible in test output rather than masked. The parse-level subtests (`HelpDocumentsFormatFlag`, `UnknownFormatFails`, `FlagValidationIsHermetic`) run regardless because they assert on the `--format` flag itself, not on a specific codec.
+- **Empty slice** — declares zero codecs. Rarely useful; effectively disables the data-path subtests. Use nil to mean "all of §4".
+
+**Per-CLI flip plan.** When a consumer wires the bundle into its CI with `SupportedFormats` matching its actual surface, the CONTRACT.md Status table's `--format` row for that CLI flips to **machine** for the codecs it declares. Codecs the CLI does not implement remain human-attested per-cell until the writer lands. Today the Status table has one cell per (CLI, codec) so the flip is per-cell, not per-row.
 
 ## What it does NOT cover yet
 
@@ -127,3 +144,5 @@ When that affordance lands, the test belongs here as `dates.LocalMidnightSemanti
 This module has its own tests that run each bundle against a stub CLI in `internal/stubcli/`. The stub is intentionally narrow — it exists so `go test ./...` from this module's root proves the library compiles and the assertions fire correctly, without depending on any of the real export-CLIs. Failures in the self-test mean the library has a bug; failures in an exporter's compat test mean the exporter drifted from the contract.
 
 The stub has two modes (`STUBCLI_MODE=flat` and `STUBCLI_MODE=cobra`). The flat-mode self-tests exercise the original Runner shape; the cobra-mode self-tests exercise `Subcommands`-based dispatch. In cobra mode, the stub's root `--help` deliberately omits `--since/--until/--format`, so the cobra-mode self-tests fail fast if `compat.Runner` ever stops prepending the subcommand. The stub emits an empty data set per `--format` codec (`[]` for json, a single header row for csv, nothing for markdown) so the formats bundle's data-path subtests run hermetically. There is also a focused unit test for `Runner.WithSubcommand` using an `argecho` helper that just prints `os.Args`.
+
+The stub additionally honors `STUBCLI_FORMATS` (comma-separated) to restrict which codecs it will accept at parse time — used by the formats bundle's `TestRunContract_PartialCodec_SkipsCSV` self-test. Setting `STUBCLI_FORMATS=markdown,json` makes the stub reject `--format csv`, so the partial-codec self-test proves the `SupportedFormats` skip is actually load-bearing: without it, the test would fail at `CSVHasHeader` because the stub rejects csv.

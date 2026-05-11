@@ -29,6 +29,16 @@
 // data-path assertions (JSONIsArray, CSVHasHeader, DefaultIsMarkdown)
 // runnable against the stub without any upstream API.
 //
+// STUBCLI_FORMATS, when set, restricts the codecs the stub will
+// accept at parse time. It is a comma-separated list, e.g.
+// "markdown,json" to simulate a partial-codec exporter (the
+// crono/liftoff shape today). Codecs not in the list are rejected
+// with the same non-zero/stderr behavior as an unknown format. The
+// compat/formats self-test uses this to prove that
+// Runner.SupportedFormats actually skips the missing codec's subtest
+// rather than running it against a stub that would reject the call.
+// When unset, all three §4 codecs are accepted.
+//
 // stubcli never makes a network request.
 package main
 
@@ -36,6 +46,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
 
 const cobraSubcommand = "biometrics"
@@ -136,10 +147,7 @@ func parseAndEmit(progName string, args []string) {
 		os.Exit(2)
 	}
 
-	switch *format {
-	case "markdown", "json", "csv":
-		// ok
-	default:
+	if !formatAccepted(*format) {
 		fmt.Fprintf(os.Stderr, "error: invalid value for --format: %q\n", *format)
 		os.Exit(2)
 	}
@@ -163,6 +171,30 @@ func parseAndEmit(progName string, args []string) {
 	case "markdown":
 		// empty stdout
 	}
+}
+
+// formatAccepted reports whether the stub should treat name as a
+// valid --format value. It honors STUBCLI_FORMATS for partial-codec
+// simulation; when unset, all three §4 codecs are accepted.
+//
+// Unknown codecs (anything outside §4) are always rejected so the
+// formats bundle's UnknownFormatFails subtest still fires regardless
+// of STUBCLI_FORMATS.
+func formatAccepted(name string) bool {
+	allowed := os.Getenv("STUBCLI_FORMATS")
+	if allowed == "" {
+		switch name {
+		case "markdown", "json", "csv":
+			return true
+		}
+		return false
+	}
+	for _, candidate := range strings.Split(allowed, ",") {
+		if strings.TrimSpace(candidate) == name {
+			return true
+		}
+	}
+	return false
 }
 
 // validDate is intentionally narrow: it accepts only what the stub needs
