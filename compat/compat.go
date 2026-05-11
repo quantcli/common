@@ -78,6 +78,37 @@ type Runner struct {
 	// declare "all of §4".
 	SupportedFormats []string
 
+	// SkipDataPath, when true, causes section bundles to skip every
+	// subtest that requires the CLI's data path to succeed in CI —
+	// i.e. the subtests that invoke the binary with a real --format
+	// value and expect a clean exit. The parse-level subtests
+	// (HelpDocumentsFormatFlag, UnknownFormatFails,
+	// FlagValidationIsHermetic) still run because they only exercise
+	// flag parsing and explicitly expect non-zero exit on the bad
+	// value.
+	//
+	// This is the escape hatch for exporters whose data path requires
+	// credentials that the CI environment does not have. Crono uses
+	// env-var auth (CRONOMETER_USERNAME/PASSWORD); liftoff uses a
+	// stored OAuth token at ~/.config/liftoff-export/auth.json;
+	// withings uses an OAuth refresh token. None of these are present
+	// in `compat`'s default empty-env invocation, so an unconditional
+	// `--format json` run exits non-zero with "not logged in" before
+	// the JSON-array check can run. Setting SkipDataPath: true lets
+	// the exporter wire the bundle in for parse-level attestation
+	// without a misleading SupportedFormats: []string{} workaround
+	// that implies "we implement no codecs".
+	//
+	// Flipping it back to false later — once auth is mockable in CI
+	// or secrets are provisioned — promotes the codec rows from
+	// human-attested to machine-attested per the CONTRACT.md Status
+	// table flip plan.
+	//
+	// Composable with SupportedFormats: when both are set, the
+	// codec-specific gate runs first, so SupportedFormats: nil +
+	// SkipDataPath: true is the typical liftoff/crono shape today.
+	SkipDataPath bool
+
 	// subcommand, when non-empty, is prepended to args on every Run
 	// call. Set via WithSubcommand; section bundles use it to dispatch
 	// per-subcommand. Callers do not need to set it directly — set
