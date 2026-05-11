@@ -91,7 +91,6 @@ func TestSupportsFormat(t *testing.T) {
 	}
 }
 
-
 // buildStub compiles the stub CLI into a temp directory and returns
 // the absolute path. It uses `go build` rather than relying on a
 // checked-in binary so the test is reproducible across platforms.
