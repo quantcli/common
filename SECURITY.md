@@ -46,20 +46,23 @@ Every PR — in `common` and in every `*-export-cli` — is gated on a CI workfl
 - `osv-scanner` for transitive vulnerabilities across the OSV database.
 - A license-policy check that allowlists only permissive licenses.
 
-**License allowlist** (SPDX identifiers):
+**License allowlist** (SPDX identifiers, sorted by SPDX id; must match `ALLOWED_LICENSES` in `.github/workflows/security.yml` exactly):
 
+- `0BSD`
 - `Apache-2.0`
-- `MIT`
 - `BSD-2-Clause`
 - `BSD-3-Clause`
-- `MPL-2.0`
+- `BSL-1.0` (Boost Software License — permissive, OSI-approved; **not** the source-available Business Source License — see denylist entry for `BUSL-*`)
+- `CC0-1.0`
 - `ISC`
+- `MIT`
+- `MPL-2.0`
 - `Unlicense`
 
 **License denylist** (blocking; not exhaustive):
 
 - The GPL family — `GPL-*`, `LGPL-*`, `AGPL-*`.
-- `SSPL-*`, `BUSL-*` / `BSL-*`, and other "source-available" licenses.
+- `SSPL-*`, `BUSL-*` (Business Source License — sometimes informally written "BSL"; not to be confused with the permissive `BSL-1.0` Boost above), and other "source-available" licenses.
 - "Custom" or unidentified licenses where the SPDX identifier cannot be resolved.
 
 A PR that introduces a denied license is blocked. To request an exception, open an issue against `quantcli/common` with the dependency name, version, license text, and the rationale. Exceptions are rare and case-by-case.
