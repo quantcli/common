@@ -34,6 +34,52 @@ func TestWithSubcommand_PrependsArg(t *testing.T) {
 	}
 }
 
+// TestWithSubcommand_NestedPathSplitsOnWhitespace covers liftoff-style
+// CLIs whose data-producing leaves live two levels deep
+// (e.g. `liftoff-export workouts stats`). Without the split, the cobra
+// resolver would receive one literal "workouts stats" argv entry and
+// reject it as an unknown command. The argecho-based assertion locks
+// in that each whitespace-separated word is its own argv entry, in
+// order, before the caller's args.
+func TestWithSubcommand_NestedPathSplitsOnWhitespace(t *testing.T) {
+	bin := buildArgEcho(t)
+	r := compat.Runner{Binary: bin}.WithSubcommand("workouts stats")
+
+	res, err := r.Run(context.Background(), "--format", "json")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if res.ExitCode != 0 {
+		t.Fatalf("exit %d; stderr=%q", res.ExitCode, res.StderrString())
+	}
+	got := strings.TrimRight(res.StdoutString(), "\n")
+	want := "workouts\nstats\n--format\njson"
+	if got != want {
+		t.Errorf("argv mismatch:\n got:\n%s\nwant:\n%s", got, want)
+	}
+	if r.Subcommand() != "workouts stats" {
+		t.Errorf("Subcommand() = %q; want %q", r.Subcommand(), "workouts stats")
+	}
+}
+
+// TestWithSubcommand_EmptyStringClears asserts that passing the empty
+// string (or whitespace-only) clears any previously-set path, which
+// keeps the API reversible without an extra method.
+func TestWithSubcommand_EmptyStringClears(t *testing.T) {
+	bin := buildArgEcho(t)
+	r := compat.Runner{Binary: bin}.WithSubcommand("biometrics").WithSubcommand("")
+	if r.Subcommand() != "" {
+		t.Errorf("Subcommand() = %q; want empty after clear", r.Subcommand())
+	}
+	res, err := r.Run(context.Background(), "--help")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got := strings.TrimRight(res.StdoutString(), "\n"); got != "--help" {
+		t.Errorf("argv mismatch: got %q want %q", got, "--help")
+	}
+}
+
 // TestRun_NoSubcommandPassthrough checks that the default zero
 // subcommand leaves args untouched.
 func TestRun_NoSubcommandPassthrough(t *testing.T) {
