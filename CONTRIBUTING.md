@@ -106,6 +106,14 @@ If a PR fails the license-policy check, do not unblock it by adding a `replace` 
 
 To propose a security policy change (allowlist, severity bar, or workflow tooling), open an issue here first — these decisions ripple to every export-cli.
 
+### Where the workflow lives, and when to centralize it
+
+The `security` workflow is **copied verbatim** into every repo that runs it (`quantcli/common` plus each `*-export-cli`). `quantcli/common` is the source of truth; the `# security.yml v1 — source of truth: quantcli/common` marker at the top of each copy is the version key. When you change the workflow in `common`, propagate the change (and bump the version) to every repo that runs it. A future drift-check job will key off that marker.
+
+Self-contained is the right shape **while the org has ≤5 repos running this workflow**. The tradeoff is deliberate: each repo's CI is hermetic, no org-level reusable-workflow setting to wrangle, and new contributors can read the entire pipeline in one file. The cost is drift — fixes in `common` don't propagate automatically, and the version marker plus this propagation rule is the mitigation.
+
+**Switchover trigger:** when a 6th repo onboards the workflow (i.e. `>5` repos), evaluate moving to a `workflow_call` reusable workflow hosted in `quantcli/common` and consumed by each export-cli. At that point the copy-and-propagate cost exceeds the centralization cost. Revisit sooner if GitHub starts letting non-admins read the reusable-workflow org setting (today that's an admin-only surface, which would otherwise hide CI configuration from contributors). See [Lead Go review on PR #5](https://github.com/quantcli/common/pull/5#pullrequestreview-4260001530) for the original rationale.
+
 For reporting a vulnerability in a shipped CLI or in `common`, see [SECURITY.md](SECURITY.md). Do **not** open a public issue with exploit details.
 
 ## License and sign-off
