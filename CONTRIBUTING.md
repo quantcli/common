@@ -122,4 +122,4 @@ This repo is MIT-licensed (see [LICENSE](LICENSE)). By contributing you agree yo
 
 ## Questions
 
-Open an issue. Tag the Lead Go Engineer if it's blocking you.
+Open an issue. Tag the Lead Go Engineer if it's blocking you. See [TRIAGE.md](TRIAGE.md) for the time-to-first-touch SLA and how reports are labeled and routed across the four `quantcli/*` repos.
