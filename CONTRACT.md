@@ -18,10 +18,10 @@ Each cell shows whether the section is implemented and how it is attested for th
 | Timezone policy | human | human | human |
 | Date flags (`--since` / `--until`) — surface | **machine** | **machine** | **machine** |
 | Date flags — local-midnight semantics | human | human | human |
-| `--format` flag surface (documented, rejects unknown) | human | human | human |
-| `--format markdown` (default) | human | human | human |
-| `--format json` | human | human | human |
-| `--format csv` | — | — | human |
+| `--format` flag surface (documented, rejects unknown) | human | human | **machine** |
+| `--format markdown` (default) | human | human | **machine** |
+| `--format json` | human | human | **machine** |
+| `--format csv` | — | — | **machine** |
 | `auth status` subcommand | human | human | human |
 | `prime` subcommand | human | human | human |
 | Hermetic `--help` / flag-validation (§7) | **machine** | **machine** | **machine** |
