@@ -164,7 +164,7 @@ LIFTOFF_EXPORT_BIN=/tmp/liftoff-export go test -tags=compat ./...
 **Expected:**
 
 ```
-ok  	github.com/quantcli/liftoff-export-cli	0.003s
+ok      github.com/quantcli/liftoff-export-cli    0.003s
 ```
 
 The `compat` suite covers CONTRACT.md §4 parse-level conformance (the `--format` flag, `UnknownFormatFails`, `FlagValidationIsHermetic`) across all four data-producing subcommands (`workouts list`, `workouts stats`, `bodyweights list`, `bodyweights stats`). Data-path subtests (`--format json` with live data) are skipped because the suite does not provision a Liftoff OAuth token; the parse-level subtests run without credentials.

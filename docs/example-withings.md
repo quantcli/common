@@ -196,8 +196,8 @@ WITHINGS_EXPORT_BIN=/tmp/withings-export go test -tags=compat ./...
 **Expected:**
 
 ```
-ok  	github.com/quantcli/withings-export-cli	0.003s
-ok  	github.com/quantcli/withings-export-cli/internal/auth	0.003s
+ok      github.com/quantcli/withings-export-cli    0.003s
+ok      github.com/quantcli/withings-export-cli/internal/auth    0.003s
 ```
 
 The suite covers CONTRACT.md §4 (format flag surface, `--format json` returns a JSON array, `--format csv` returns a header row, default equals `--format markdown`) and §7 (hermeticity) across all five data subcommands. All cells in the CONTRACT.md Status table for `withings-export` are **machine**-attested.

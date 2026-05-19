@@ -183,8 +183,8 @@ EXPORT_CLI_BIN=/tmp/crono-export go test -tags=compat ./...
 **Expected:**
 
 ```
-ok  	github.com/quantcli/crono-export-cli	0.010s
-ok  	github.com/quantcli/crono-export-cli/cmd	0.005s
+ok      github.com/quantcli/crono-export-cli    0.010s
+ok      github.com/quantcli/crono-export-cli/cmd    0.005s
 ...
 ```
 
