@@ -161,13 +161,9 @@ func invalidSinceValueFails(t *testing.T, r compat.Runner) {
 // unreachable address. If the CLI tries to hit the network at all, it
 // will fail or hang — the latter is caught by the Runner timeout.
 //
-// This is a harness invariant, not a property the contract promises
-// today. A `--help` that dialed out would still satisfy §3 surface
-// checks but would be unusable for LLM-agent introspection (an agent
-// must be able to ask "what does this CLI do" without a token or
-// network). Codifying hermeticity as its own CONTRACT.md section is
-// tracked separately; in the meantime the framework defends the
-// property here so an exporter cannot regress it silently.
+// Pins down the `--help` path of CONTRACT §7 Hermeticity on every PR.
+// §7 is load-bearing for LLM-agent introspection: an agent must be able
+// to ask "what does this CLI do" without a token or working network.
 func helpIsHermetic(t *testing.T, r compat.Runner) {
 	t.Helper()
 	res := r.WithEnv(noNetworkEnv()...).MustRun(t, "--help")
@@ -176,10 +172,11 @@ func helpIsHermetic(t *testing.T, r compat.Runner) {
 	}
 }
 
-// flagValidationIsHermetic is the parse-failure half of the same
-// harness invariant documented on helpIsHermetic above: a CLI that
-// dialed out before rejecting an invalid flag would have already
-// leaked a network call by the time it exits non-zero.
+// flagValidationIsHermetic is the date-parse-failure half of CONTRACT
+// §7 Hermeticity, paired with helpIsHermetic above: a CLI that dialed
+// out before rejecting an invalid flag would have already leaked a
+// network call by the time it exits non-zero. Pins down the
+// date-parse-failure path of §7 on every PR.
 func flagValidationIsHermetic(t *testing.T, r compat.Runner) {
 	t.Helper()
 	args := []string{"--since", "obviously-not-a-date", "--until", "obviously-not-a-date"}

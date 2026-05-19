@@ -154,14 +154,8 @@ func unknownFormatFails(t *testing.T, r compat.Runner) {
 // failure does not dial out. Mirrors the dates bundle's parse-failure
 // hermetic test, but exercises the `--format` parse path explicitly
 // in case the CLI looks up format codecs differently than date
-// values.
-//
-// This is the same harness invariant the dates bundle defends — a
-// flag-validation failure must not have already opened a connection
-// by the time it exits non-zero. It is not a contractual claim
-// (CONTRACT.md does not define a hermeticity section today);
-// codifying that is tracked separately. Until then, the framework
-// enforces it here so an exporter cannot regress it silently.
+// values. Pins down the `--format` parse-failure path of CONTRACT §7
+// Hermeticity on every PR.
 func flagValidationIsHermetic(t *testing.T, r compat.Runner) {
 	t.Helper()
 	res, err := r.WithEnv(noNetworkEnv()...).Run(context.Background(), "--format", unknownFormatValue)
