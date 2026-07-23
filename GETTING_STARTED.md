@@ -114,10 +114,10 @@ All green means the CLI conforms to [CONTRACT.md §3–§4 and §7](CONTRACT.md)
 
 ## Going further
 
-- **Worked examples with expected output:**
-  - [crono-export example](docs/example-crono.md) — nutrition totals, food log, biometrics
-  - [liftoff-export example](docs/example-liftoff.md) — workouts list, bodyweight trend
-  - [withings-export example](docs/example-withings.md) — activity, sleep, measurements
+- **Worked examples with expected output** (hosted in each CLI's repo):
+  - [crono-export example](https://github.com/quantcli/crono-export-cli/blob/main/docs/example.md) — nutrition totals, food log, biometrics
+  - [liftoff-export example](https://github.com/quantcli/liftoff-export-cli/blob/main/docs/example.md) — workouts list, bodyweight trend
+  - [withings-export example](https://github.com/quantcli/withings-export-cli/blob/main/docs/example.md) — activity, sleep, measurements
 - **Contract reference:** [CONTRACT.md](CONTRACT.md) — date flags, output formats, auth model, conformance
 - **Conformance library:** [compat/README.md](compat/README.md) — how the machine-attested test bundles work
 - **Security policy:** [SECURITY.md](SECURITY.md)
