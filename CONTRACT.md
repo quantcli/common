@@ -11,6 +11,7 @@ Each cell shows whether the section is implemented and how it is attested for th
 - **machine** — covered by a [`compat/`](compat/README.md) bundle that self-tests green in `quantcli/common`'s own CI on every PR. During this partial-adoption window, **machine** attests that the bundle exists and is green here; the explicit next milestone is the per-exporter consumer-wire PRs that will run the bundle directly in each `*-export-cli`'s own CI.
 - **human** — implemented; verified only by review at merge time.
 - **—** — not implemented yet.
+- **n/a** — does not apply to this CLI's upstream (e.g. precedence rules for a token file the CLI never writes).
 
 | Section | crono-export | liftoff-export | withings-export |
 |---|---|---|---|
@@ -23,6 +24,7 @@ Each cell shows whether the section is implemented and how it is attested for th
 | `--format json` | human | human | **machine** |
 | `--format csv` | — | — | **machine** |
 | `auth status` subcommand | human | human | human |
+| Headless auth precedence (env over token file) | n/a | human | human |
 | `prime` subcommand | human | human | human |
 | Hermetic `--help` / flag-validation (§7) | **machine** | **machine** | **machine** |
 
@@ -91,6 +93,14 @@ Auth flows differ legitimately across upstreams (env-var basic auth, OAuth2, int
 
 - An `auth status` subcommand that prints one line summarizing readiness — e.g. `logged in as you@example.com (token expires 2026-05-01)` or `missing CRONOMETER_PASSWORD`. Exit code 0 if usable, non-zero otherwise.
 - A headless path: where the upstream's auth model permits it, every CLI accepts environment variables that let a fresh container run without an interactive login. The variable names are `{SERVICE}_*` (e.g. `CRONOMETER_PASSWORD`, `WITHINGS_REFRESH_TOKEN`). Document them in `prime`.
+
+### Precedence
+
+Where a CLI has both a headless variable and a saved token file, the environment wins:
+
+- **`{SERVICE}_REFRESH_TOKEN` (or the equivalent headless variable) takes precedence over any saved token file when it is set.** A container with a stale mounted config and a freshly injected secret must use the secret. Precedence is uniform across the family — an invocation that honors the variable in one CLI must not silently ignore it in another.
+- `auth status` reports the environment as the source and exits 0 without a network call. Exit 0 there means "a token was supplied", not "the token works" — validity is unknowable locally.
+- Where the upstream **rotates** refresh tokens on each use, the headless path writes the rotated value back to the token file on a best-effort basis, so a repeat caller can read it and re-inject it. A failed write there is a stderr warning, not an error (§4): a minted access token is usable whether or not the cache write landed, and read-only rootfs is a normal container shape.
 
 Where the upstream forbids headless auth (e.g. interactive OAuth consent), `auth status` still works and the CLI still exposes `auth login` / `auth logout` / `auth refresh`.
 
