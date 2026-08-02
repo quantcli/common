@@ -23,6 +23,7 @@ Each cell shows whether the section is implemented and how it is attested for th
 | `--format markdown` (default) | human | human | **machine** |
 | `--format json` | human | human | **machine** |
 | `--format csv` | — | — | **machine** |
+| JSON scalar typing (§4) | — | human | — |
 | `auth status` subcommand | human | human | human |
 | Headless auth precedence (env over token file) | n/a | human | human |
 | `prime` subcommand | human | human | human |
@@ -86,6 +87,16 @@ Output rules:
 - **stderr**: errors and progress messages. Pipelines using `>` to redirect stdout do not need `2>&1`.
 - **Empty result**: success with empty output (`[]` for JSON, no rows for markdown/CSV), exit code 0. Empty is not an error.
 - **Exit code**: 0 success, non-zero only for auth or network failure.
+
+### Scalar typing
+
+§4 above pins down *which* codecs exist and the stdout/stderr split; §2 pins down timestamp formatting. This clause pins down the JSON type of an individual field, so a `jq` expression or an LLM agent can rely on the shape across every subcommand of every CLI. It governs the `json` codec; markdown and CSV are rendered text and carry no type.
+
+- **Numeric quantities are JSON numbers, not quoted strings** — even when the upstream API sends them as strings. Decoding MAY keep the upstream shape; output MUST NOT. `"weight": 175` (`"weight": "175"` is wrong).
+- **A logical field has one JSON type across every subcommand that emits it.** If `bodyweight` is a number in one place it is a number everywhere. When the value is absent it is `null` — never `""`, never `0`, so a missing measurement can't be read as a real one.
+- **A human-formatted quantity carries a machine-readable sibling.** A field whose value is a display phrase (`"01 hours 06 minutes"`) MUST ship a sibling in a canonical unit next to it (`sessionDurationSeconds`). The unit belongs in the key name. This is additive — keep the display field.
+
+Timestamps are the one deliberate exception: §2 fixes their formatting (RFC3339 with offset), so a `date` field MAY be a formatted string. Even then it is the *same* representation across every subcommand of a given CLI — one logical field, one shape.
 
 ## 5. Auth
 
