@@ -69,6 +69,9 @@ import (
 // "subcommand=NAME" t.Run group, mirroring compat/dates.
 func RunContract(t *testing.T, r compat.Runner) {
 	t.Helper()
+	if r.SupportedFormats != nil && (!r.SupportsFormat("markdown") || !r.SupportsFormat("json")) {
+		t.Fatalf("compat/formats: Runner.SupportedFormats=%v declares less than the §4 floor {markdown, json}; see CONTRACT.md §4", r.SupportedFormats)
+	}
 	if r.Binary == "" {
 		t.Fatal("formats: compat.Runner.Binary is empty")
 	}

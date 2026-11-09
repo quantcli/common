@@ -120,7 +120,7 @@ When `compat.Runner.Subcommands` is set, every row above runs once per declared 
 
 ### Partial-codec exporters: `Runner.SupportedFormats`
 
-§4 lists three required codecs (markdown, json, csv), but `crono-export-cli` and `liftoff-export-cli` reject `--format csv` today — only `withings-export-cli` implements all three. The bundle is still adoptable by partial-codec exporters via `compat.Runner.SupportedFormats`:
+§4 requires markdown and json; csv is recommended but optional. Exporters that do not implement csv can use `compat.Runner.SupportedFormats`:
 
 ```go
 formats.RunContract(t, compat.Runner{
@@ -132,8 +132,8 @@ formats.RunContract(t, compat.Runner{
 Semantics:
 
 - **Nil (default)** — exporter declares the full §4 surface. Every subtest runs.
-- **Non-nil subset** — `JSONIsArray`, `CSVHasHeader`, and `DefaultIsMarkdown` skip via `t.Skipf` when their codec is not in the slice. The skip names the missing codec so the gap is visible in test output rather than masked. The parse-level subtests (`HelpDocumentsFormatFlag`, `UnknownFormatFails`, `FlagValidationIsHermetic`) run regardless because they assert on the `--format` flag itself, not on a specific codec.
-- **Empty slice** — declares zero codecs. Rarely useful; effectively disables the data-path subtests. Use nil to mean "all of §4".
+- **Non-nil subset** — must include both `markdown` and `json`; `formats.RunContract` fails immediately if either is missing. `CSVHasHeader` skips when `csv` is absent, while the parse-level subtests run regardless.
+- **Empty slice** — declares zero codecs and fails the §4 minimum check. Use nil to mean "all of §4".
 
 **Per-CLI flip plan.** When a consumer wires the bundle into its CI with `SupportedFormats` matching its actual surface, the CONTRACT.md Status table's `--format` row for that CLI flips to **machine** for the codecs it declares. Codecs the CLI does not implement remain human-attested per-cell until the writer lands. Today the Status table has one cell per (CLI, codec) so the flip is per-cell, not per-row.
 
