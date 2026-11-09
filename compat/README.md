@@ -182,7 +182,7 @@ Exporters adopting the proposed `--print-resolved-window` flag can call
 `dates.RunResolvedWindow(t, runner)` separately from `RunContract` while
 rollout is in progress. The command prints exactly one line:
 `since=VALUE until_exclusive=VALUE`, followed by a newline. Finite bounds are
-RFC3339 timestamps in local time; absent bounds are `unbounded`. The the upper bound is the next local calendar midnight for an
+RFC3339 timestamps in local time; absent bounds are `unbounded`. The upper bound is the next local calendar midnight for an
 explicit inclusive `--until`. It exits successfully without credentials or
 network access. The diagnostic must use the same resolved dates as the
 export path. These checks cover parsing and the reported window, not API
