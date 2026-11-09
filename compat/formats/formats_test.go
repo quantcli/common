@@ -1,14 +1,54 @@
 package formats_test
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/quantcli/common/compat"
 	"github.com/quantcli/common/compat/formats"
 )
+
+// Run the failing cases in a child test process: Fatal marks a real
+// testing.T as failed and cannot be caught by an in-process subtest.
+func TestRunContract_SupportedFormatsBelowFloor(t *testing.T) {
+	if scenario := os.Getenv("COMPAT_FLOOR_CASE"); scenario != "" {
+		var supported []string
+		switch scenario {
+		case "empty":
+			supported = []string{}
+		case "markdown":
+			supported = []string{"markdown"}
+		case "json":
+			supported = []string{"json"}
+		case "typo":
+			supported = []string{"markdown", "json "}
+		default:
+			t.Fatalf("unknown scenario %q", scenario)
+		}
+		formats.RunContract(t, compat.Runner{Binary: "unused", SupportedFormats: supported, SkipDataPath: true, Subcommands: []string{"one"}})
+		return
+	}
+	for _, scenario := range []string{"empty", "markdown", "json", "typo"} {
+		t.Run(scenario, func(t *testing.T) {
+			cmd := exec.Command(os.Args[0], "-test.run=^TestRunContract_SupportedFormatsBelowFloor$")
+			cmd.Env = append(os.Environ(), "COMPAT_FLOOR_CASE="+scenario)
+			output, err := cmd.CombinedOutput()
+			if err == nil {
+				t.Fatalf("nonconforming declaration passed: %s", output)
+			}
+			if _, ok := err.(*exec.ExitError); !ok {
+				t.Fatalf("could not run child test: %v", err)
+			}
+			if !strings.Contains(string(output), "declares less than the §4 floor {markdown, json}") {
+				t.Fatalf("missing floor diagnostic: %s", output)
+			}
+		})
+	}
+}
 
 // TestRunContract_AgainstStubFlat builds the in-tree stub binary in
 // its default (flat) mode and runs the formats compat suite against
@@ -62,6 +102,13 @@ func TestRunContract_PartialCodec_SkipsCSV(t *testing.T) {
 		SupportedFormats: []string{"markdown", "json"},
 	}
 	formats.RunContract(t, r)
+}
+
+func TestRunContract_ExplicitFullFormats(t *testing.T) {
+	formats.RunContract(t, compat.Runner{
+		Binary:           buildStub(t),
+		SupportedFormats: []string{"csv", "json", "markdown"},
+	})
 }
 
 // TestRunContract_SkipDataPath_GatesDataSubtests pins down the

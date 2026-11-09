@@ -82,9 +82,9 @@ type Runner struct {
 	// FlagValidationIsHermetic). Those assert on the --format flag
 	// itself, not on a specific codec, and run regardless.
 	//
-	// An empty slice declares zero supported codecs — rarely useful,
-	// and effectively disables the data-path subtests. Use nil to
-	// declare "all of §4".
+	// An empty slice declares zero supported codecs. The formats bundle
+	// rejects any non-nil declaration missing markdown or json, the §4
+	// minimum. Use nil to declare "all of §4".
 	SupportedFormats []string
 
 	// SkipDataPath, when true, causes section bundles to skip every
