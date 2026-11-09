@@ -54,3 +54,9 @@ func buildStub(t *testing.T) string {
 	}
 	return out
 }
+
+func TestResolvedWindowAgainstStub(t *testing.T) {
+	bin := buildStub(t)
+	dates.RunResolvedWindow(t, compat.Runner{Binary: bin})
+	dates.RunResolvedWindow(t, compat.Runner{Binary: bin, Env: []string{"STUBCLI_MODE=cobra"}, Subcommands: []string{"biometrics"}})
+}

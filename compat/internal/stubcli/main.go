@@ -60,6 +60,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 const cobraSubcommand = "biometrics"
@@ -155,6 +156,7 @@ func parseAndEmit(progName string, args []string) {
 	fs.SetOutput(os.Stderr)
 	since := fs.String("since", "", "inclusive lower bound")
 	until := fs.String("until", "", "inclusive upper bound")
+	window := fs.Bool("print-resolved-window", false, "print resolved window")
 	format := fs.String("format", "markdown", "output format (markdown|json|csv)")
 	if err := fs.Parse(args); err != nil {
 		os.Exit(2)
@@ -171,6 +173,21 @@ func parseAndEmit(progName string, args []string) {
 	if *until != "" && !validDate(*until) {
 		fmt.Fprintf(os.Stderr, "error: invalid value for --until: %q\n", *until)
 		os.Exit(2)
+	}
+
+	if *window {
+		start, err := time.ParseInLocation("2006-01-02", *since, time.Local)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		end, err := time.ParseInLocation("2006-01-02", *until, time.Local)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		fmt.Printf("since=%s until_exclusive=%s\n", start.Format(time.RFC3339), end.AddDate(0, 0, 1).Format(time.RFC3339))
+		return
 	}
 
 	// STUBCLI_NEEDS_TOKEN=1 simulates a credentialless-CI failure:
