@@ -120,14 +120,16 @@ When `compat.Runner.Subcommands` is set, every row above runs once per declared 
 
 ### Partial-codec exporters: `Runner.SupportedFormats`
 
-§4 requires markdown and json; csv is recommended but optional. Exporters that do not implement csv can use `compat.Runner.SupportedFormats`:
+§4 requires markdown and json; csv is recommended but optional. Exporters that do not implement csv can use `compat.Runner.SupportedFormats`. Prefer the exported format constants to string literals so misspelled constant names fail to compile:
 
 ```go
 formats.RunContract(t, compat.Runner{
     Binary:           os.Getenv("EXPORT_CLI_BIN"),
-    SupportedFormats: []string{"markdown", "json"}, // declare what you implement
+    SupportedFormats: []string{compat.FormatMarkdown, compat.FormatJSON}, // declare what you implement
 })
 ```
+
+`compat.FormatCSV` names the optional CSV codec, and `compat.CanonicalFormats` contains all three canonical names. String literals remain valid; their spelling is not checked by the compiler.
 
 Semantics:
 
