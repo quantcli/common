@@ -23,6 +23,17 @@ import (
 	"time"
 )
 
+// Canonical §4 output codec names for Runner.SupportedFormats.
+const (
+	FormatMarkdown = "markdown"
+	FormatJSON     = "json"
+	FormatCSV      = "csv"
+)
+
+// CanonicalFormats is the full set of §4 output codecs. Exporters that
+// support a subset can populate Runner.SupportedFormats with the constants.
+var CanonicalFormats = []string{FormatMarkdown, FormatJSON, FormatCSV}
+
 // Runner invokes a single *-export-cli binary in a controlled environment.
 // A zero-value Runner is not usable; Binary must be set to an absolute path.
 type Runner struct {
@@ -65,13 +76,14 @@ type Runner struct {
 
 	// SupportedFormats declares which §4 output codecs the exporter
 	// implements. Used by compat/formats to gate the codec-specific
-	// data-path subtests.
+	// data-path subtests. Use FormatMarkdown, FormatJSON, and FormatCSV
+	// instead of string literals to catch misspelled identifiers at compile time.
 	//
 	// Default (nil) means the exporter declares the full §4 surface
 	// (markdown, json, csv); compat/formats runs every subtest.
 	//
 	// Non-nil declares an explicit subset — e.g.
-	// []string{"markdown", "json"} for a CLI that has not yet added a
+	// []string{FormatMarkdown, FormatJSON} for a CLI that has not yet added a
 	// CSV writer. The bundle's JSONIsArray, CSVHasHeader, and
 	// DefaultIsMarkdown subtests skip via t.Skipf when their codec is
 	// not in the list, naming the missing codec so the gap is visible
@@ -253,7 +265,7 @@ func (r Runner) Subcommand() string { return strings.Join(r.subcommandParts, " "
 // returns true for any name. When SupportedFormats is non-nil
 // (including empty), only names present in the slice return true.
 // String comparison is exact: callers pass the canonical CONTRACT.md
-// codec names ("markdown", "json", "csv").
+// codec names (FormatMarkdown, FormatJSON, and FormatCSV).
 //
 // Section bundles consult this when deciding whether to skip a
 // codec-specific subtest. Integrators normally do not call it
