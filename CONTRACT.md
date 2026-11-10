@@ -18,7 +18,7 @@ Each cell shows whether the section is implemented and how it is attested for th
 | Repo naming (`{service}-export-cli`) | human | human | human |
 | Timezone policy | human | human | human |
 | Date flags (`--since` / `--until`) — surface | **machine** | **machine** | **machine** |
-| Date flags — local-midnight semantics | human | human | human |
+| Date flags — local-midnight semantics | **machine** | **machine** | **machine** |
 | `--format` flag surface (documented, rejects unknown) | human | human | **machine** |
 | `--format markdown` (default) | human | human | **machine** |
 | `--format json` | human | human | **machine** |

@@ -12,14 +12,9 @@
 //   - A flag-validation failure does not perform a network request.
 //   - `--help` exits zero and does not perform a network request.
 //
-// What is intentionally NOT machine-attested yet:
-//
-//   - The actual local-midnight semantics of `--since 2026-04-15` (i.e.
-//     "the window starts at local midnight, not UTC midnight"). Asserting
-//     this black-box requires either a `--print-resolved-window` (or
-//     equivalent) affordance on every CLI, or a recorded HTTP fixture per
-//     upstream. Both are out of scope for the first compat-test cut and
-//     tracked separately in quantcli/common.
+// RunResolvedWindow additionally checks explicit local date bounds and the
+// exclusive end of the selected day in multiple timezones, including DST
+// transitions. Exporters invoke it separately from RunContract.
 //
 // Exporter usage:
 //
@@ -217,8 +212,8 @@ func noNetworkEnv() []string {
 	}
 }
 
-// RunResolvedWindow checks the optional offline window diagnostic on each
-// declared command. Call it separately while exporters adopt the proposal.
+// RunResolvedWindow checks the offline window diagnostic on each declared
+// command. Exporters call it separately from RunContract.
 func RunResolvedWindow(t *testing.T, r compat.Runner) {
 	t.Helper()
 	subs := r.Subcommands

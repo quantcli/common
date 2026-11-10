@@ -152,14 +152,12 @@ formats.RunContract(t, compat.Runner{
 
 `SkipDataPath` and `SupportedFormats` compose: `nil` SupportedFormats + `SkipDataPath: true` is the typical liftoff/crono shape today (declare the full surface, but skip the data-path subtests until creds are available). Use `SupportedFormats: []string{...}` instead of `SkipDataPath: true` when the CLI structurally lacks a codec — those are two different gaps and should not be confused.
 
-## What it does NOT cover yet
+## Local date-window coverage
 
-The actual local-midnight semantics of `--since 2026-04-15` remains **human-attested** until exporters adopt the resolved-window check in CI. Black-box coverage can use either:
-
-- a `--print-resolved-window`-style affordance on every CLI (a substantive contract change, intentionally out of scope of the first compat-test cut), or
-- per-upstream recorded HTTP fixtures (heavy, and pinned to specific API shapes).
-
-The opt-in `dates.RunResolvedWindow` check below supports the first approach.
+The `dates.RunResolvedWindow` check covers explicit date bounds in multiple
+local timezones, including both daylight-saving transitions. Crono, Liftoff,
+and Withings invoke it in their own compatibility CI. It verifies the reported
+window; request and filtering behavior requires exporter-specific tests.
 
 ## Adding a new contract test
 
@@ -176,11 +174,10 @@ The stub has two modes (`STUBCLI_MODE=flat` and `STUBCLI_MODE=cobra`). The flat-
 
 The stub additionally honors `STUBCLI_FORMATS` (comma-separated) to restrict which codecs it will accept at parse time — used by the formats bundle's `TestRunContract_PartialCodec_SkipsCSV` self-test. Setting `STUBCLI_FORMATS=markdown,json` makes the stub reject `--format csv`, so the partial-codec self-test proves the `SupportedFormats` skip is actually load-bearing: without it, the test would fail at `CSVHasHeader` because the stub rejects csv.
 
-## Proposed resolved-window diagnostic
+## Resolved-window diagnostic
 
-Exporters adopting the proposed `--print-resolved-window` flag can call
-`dates.RunResolvedWindow(t, runner)` separately from `RunContract` while
-rollout is in progress. The command prints exactly one line:
+Exporters call `dates.RunResolvedWindow(t, runner)` separately from
+`RunContract` to check the `--print-resolved-window` flag. The command prints exactly one line:
 `since=VALUE until_exclusive=VALUE`, followed by a newline. Finite bounds are
 RFC3339 timestamps in local time; absent bounds are `unbounded`. The upper bound is the next local calendar midnight for an
 explicit inclusive `--until`. It exits successfully without credentials or
