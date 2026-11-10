@@ -9,7 +9,7 @@ funding and operating costs.
 The operating spend ceiling is **$300 per month**. This is a policy limit, not
 actual expenditure, a fundraising target, or a promise to spend.
 
-Public approval record: [to be supplied before publication]. Increasing the
+Public approval record: [board review and publication PR](https://github.com/quantcli/common/pull/39). Increasing the
 ceiling or taking on a recurring cost requires prior Executive Director and
 board approval. Contributions do not automatically authorize new spending.
 
