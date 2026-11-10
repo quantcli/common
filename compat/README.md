@@ -154,12 +154,12 @@ formats.RunContract(t, compat.Runner{
 
 ## What it does NOT cover yet
 
-The actual local-midnight semantics of `--since 2026-04-15` (the harmonization that just landed across crono/liftoff/withings) is still **human-attested** in the status table. Asserting it black-box requires either:
+The actual local-midnight semantics of `--since 2026-04-15` remains **human-attested** until exporters adopt the resolved-window check in CI. Black-box coverage can use either:
 
 - a `--print-resolved-window`-style affordance on every CLI (a substantive contract change, intentionally out of scope of the first compat-test cut), or
 - per-upstream recorded HTTP fixtures (heavy, and pinned to specific API shapes).
 
-When that affordance lands, the test belongs here as `dates.LocalMidnightSemantics`.
+The opt-in `dates.RunResolvedWindow` check below supports the first approach.
 
 ## Adding a new contract test
 
@@ -175,3 +175,15 @@ This module has its own tests that run each bundle against a stub CLI in `intern
 The stub has two modes (`STUBCLI_MODE=flat` and `STUBCLI_MODE=cobra`). The flat-mode self-tests exercise the original Runner shape; the cobra-mode self-tests exercise `Subcommands`-based dispatch. In cobra mode, the stub's root `--help` deliberately omits `--since/--until/--format`, so the cobra-mode self-tests fail fast if `compat.Runner` ever stops prepending the subcommand. The stub emits an empty data set per `--format` codec (`[]` for json, a single header row for csv, nothing for markdown) so the formats bundle's data-path subtests run hermetically. There is also a focused unit test for `Runner.WithSubcommand` using an `argecho` helper that just prints `os.Args`.
 
 The stub additionally honors `STUBCLI_FORMATS` (comma-separated) to restrict which codecs it will accept at parse time — used by the formats bundle's `TestRunContract_PartialCodec_SkipsCSV` self-test. Setting `STUBCLI_FORMATS=markdown,json` makes the stub reject `--format csv`, so the partial-codec self-test proves the `SupportedFormats` skip is actually load-bearing: without it, the test would fail at `CSVHasHeader` because the stub rejects csv.
+
+## Proposed resolved-window diagnostic
+
+Exporters adopting the proposed `--print-resolved-window` flag can call
+`dates.RunResolvedWindow(t, runner)` separately from `RunContract` while
+rollout is in progress. The command prints exactly one line:
+`since=VALUE until_exclusive=VALUE`, followed by a newline. Finite bounds are
+RFC3339 timestamps in local time; absent bounds are `unbounded`. The upper bound is the next local calendar midnight for an
+explicit inclusive `--until`. It exits successfully without credentials or
+network access. The diagnostic must use the same resolved dates as the
+export path. These checks cover parsing and the reported window, not API
+requests or data filtering, which need exporter-specific tests.

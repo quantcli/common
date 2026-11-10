@@ -63,7 +63,18 @@ Every subcommand that selects a window of data accepts:
 | Absolute | `2026-04-15` | Local midnight that calendar day |
 | Relative | `7d`, `4w`, `6m`, `1y` | N units before today's local midnight |
 
-Window semantics are half-open `[since, until_exclusive)` internally, but `--until` is inclusive of the named day from the user's point of view: the CLI adds 24h to the parsed value before filtering, so `--until 2026-04-15` includes all 24 hours of April 15.
+Window semantics are half-open `[since, until_exclusive)` internally, but `--until` is inclusive of the named day from the user's point of view: the exclusive bound is the next local calendar midnight. A local day may be 23 or 25 hours when daylight saving time changes.
+
+### Resolved window diagnostic
+
+Every window-selecting subcommand accepts `--print-resolved-window` (default
+false). When set, it resolves its normal date arguments and defaults, prints
+exactly `since=VALUE until_exclusive=VALUE` followed by a newline, and exits
+without credentials or network requests. Each finite VALUE is an RFC3339
+timestamp with its local offset; an absent bound is `unbounded`. The reported
+half-open window must describe the same dates used by the export path. For an
+inclusive calendar-day API, the exclusive end represents the following local
+midnight. Invalid dates fail with a nonzero exit and no diagnostic on stdout.
 
 Relative durations snap to local midnight, **not** "this many days before the current instant". `--since 30d` returns the same window whether you run it at 9am or 11pm.
 

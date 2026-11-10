@@ -216,3 +216,31 @@ func noNetworkEnv() []string {
 		"TZ=UTC",
 	}
 }
+
+// RunResolvedWindow checks the optional offline window diagnostic on each
+// declared command. Call it separately while exporters adopt the proposal.
+func RunResolvedWindow(t *testing.T, r compat.Runner) {
+	t.Helper()
+	subs := r.Subcommands
+	if len(subs) == 0 {
+		subs = []string{""}
+	}
+	cases := []struct{ zone, day, start, end string }{
+		{"Pacific/Honolulu", "2026-04-15", "2026-04-15T00:00:00-10:00", "2026-04-16T00:00:00-10:00"},
+		{"Pacific/Kiritimati", "2026-04-15", "2026-04-15T00:00:00+14:00", "2026-04-16T00:00:00+14:00"},
+		{"America/New_York", "2026-03-08", "2026-03-08T00:00:00-05:00", "2026-03-09T00:00:00-04:00"},
+		{"America/New_York", "2026-11-01", "2026-11-01T00:00:00-04:00", "2026-11-02T00:00:00-05:00"},
+	}
+	for _, sub := range subs {
+		for _, tc := range cases {
+			t.Run(sub+"/"+tc.zone+"/"+tc.day, func(t *testing.T) {
+				runner := r.WithSubcommand(sub).WithEnv(noNetworkEnv()...).WithEnv("TZ=" + tc.zone)
+				res := runner.MustRun(t, "--since", tc.day, "--until", tc.day, "--print-resolved-window")
+				want := "since=" + tc.start + " until_exclusive=" + tc.end + "\n"
+				if res.ExitCode != 0 || res.StdoutString() != want || res.StderrString() != "" {
+					t.Errorf("exit=%d stdout=%q stderr=%q; want exit 0 stdout=%q and empty stderr", res.ExitCode, res.StdoutString(), res.StderrString(), want)
+				}
+			})
+		}
+	}
+}
