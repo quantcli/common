@@ -46,6 +46,8 @@ Every PR — in `common` and in every `*-export-cli` — is gated on a CI workfl
 - `osv-scanner` for transitive vulnerabilities across the OSV database.
 - A license-policy check that allowlists only permissive licenses.
 
+The same checks re-run on a daily schedule (06:17 UTC) on each repo's default branch, so an advisory published against a dependency we already ship is caught within a day rather than waiting for the next PR.
+
 **License allowlist** (SPDX identifiers, sorted by SPDX id; must match `ALLOWED_LICENSES` in `.github/workflows/security.yml` exactly):
 
 - `0BSD`

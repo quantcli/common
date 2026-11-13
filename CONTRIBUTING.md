@@ -102,13 +102,17 @@ Every PR — here and in each `*-export-cli` — is gated on the `security` work
 - **`osv-scanner`** — OSV transitive vulnerability scan over the working tree.
 - **License policy** — every direct + transitive Go dependency must resolve to one of the permissive SPDX ids listed in [`SECURITY.md`](SECURITY.md#supply-chain-policy). GPL-family, SSPL, BSL, and other non-permissive licenses are blocking.
 
+The same three checks also run **daily at 06:17 UTC** on each repo's default branch. A new advisory does not change our code, so PR and push triggers alone would never re-check a repo with no commit traffic — a quiet repo would stay silently vulnerable until somebody happened to open a PR. If a scheduled run goes red with no corresponding code change, a new advisory has landed against an existing dependency; triage it as described in [TRIAGE.md](TRIAGE.md).
+
 If a PR fails the license-policy check, do not unblock it by adding a `replace` directive or vendoring a fork to relabel the license. Either drop the dependency, switch to a permissively licensed equivalent, or open an issue requesting a policy exception with the rationale.
 
 To propose a security policy change (allowlist, severity bar, or workflow tooling), open an issue here first — these decisions ripple to every export-cli.
 
 ### Where the workflow lives, and when to centralize it
 
-The `security` workflow is **copied verbatim** into every repo that runs it (`quantcli/common` plus each `*-export-cli`). `quantcli/common` is the source of truth; the `# security.yml v1 — source of truth: quantcli/common` marker at the top of each copy is the version key. When you change the workflow in `common`, propagate the change (and bump the version) to every repo that runs it. A future drift-check job will key off that marker.
+The `security` workflow is **copied verbatim** into every repo that runs it (`quantcli/common` plus each `*-export-cli`). `quantcli/common` is the source of truth; the `# security.yml v2 — source of truth: quantcli/common` marker at the top of each copy is the version key. When you change the workflow in `common`, propagate the change (and bump the version) to every repo that runs it. A future drift-check job will key off that marker.
+
+One line is expected to differ between copies: the header's pointer to this document is relative in `common` (`CONTRIBUTING.md`) and qualified in the export-clis (`quantcli/common CONTRIBUTING.md`). Everything else should match byte for byte.
 
 Self-contained is the right shape **while the org has ≤5 repos running this workflow**. The tradeoff is deliberate: each repo's CI is hermetic, no org-level reusable-workflow setting to wrangle, and new contributors can read the entire pipeline in one file. The cost is drift — fixes in `common` don't propagate automatically, and the version marker plus this propagation rule is the mitigation.
 
