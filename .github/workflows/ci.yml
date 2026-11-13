@@ -3,8 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
+  # Every pull request, not just those targeting main: with `branches: [main]`
+  # a PR stacked on another PR's branch got no CI at all, so code could reach
+  # main through a chain where it was never linted or tested on its own.
   pull_request:
-    branches: [main]
 
 # Default-deny at workflow level; jobs grant only what they need.
 permissions: {}
