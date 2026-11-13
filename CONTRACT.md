@@ -8,8 +8,8 @@ The contract exists so that, once you have used one of these CLIs, the others fe
 
 Each cell shows whether the section is implemented and how it is attested for that CLI:
 
-- **machine** — covered by a [`compat/`](compat/README.md) bundle that self-tests green in `quantcli/common`'s own CI on every PR. During this partial-adoption window, **machine** attests that the bundle exists and is green here; the explicit next milestone is the per-exporter consumer-wire PRs that will run the bundle directly in each `*-export-cli`'s own CI.
-- **human** — implemented; verified only by review at merge time.
+- **machine** — a [`compat/`](compat/README.md) bundle covering this cell self-tests green in `quantcli/common`'s own CI on every PR here, *and* the exporter's own CI runs that bundle against its built binary on every PR to its repo. Both halves are required: a bundle nobody runs attests nothing, and a bundle whose subtests all skip attests nothing either.
+- **human** — implemented; verified only by review at merge time. A cell stays **human** when no bundle covers it, or when a bundle covers it but the exporter has the relevant subtests switched off — `Runner.SkipDataPath` and `Runner.SupportedFormats` both do that deliberately and visibly, naming the gap in test output.
 - **—** — not implemented yet.
 - **n/a** — does not apply to this CLI's upstream (e.g. precedence rules for a token file the CLI never writes).
 
@@ -19,9 +19,9 @@ Each cell shows whether the section is implemented and how it is attested for th
 | Timezone policy | human | human | human |
 | Date flags (`--since` / `--until`) — surface | **machine** | **machine** | **machine** |
 | Date flags — local-midnight semantics | **machine** | **machine** | **machine** |
-| `--format` flag surface (documented, rejects unknown) | human | human | **machine** |
-| `--format markdown` (default) | human | human | **machine** |
-| `--format json` | human | human | **machine** |
+| `--format` flag surface (documented, rejects unknown) | human | **machine** | **machine** |
+| `--format markdown` (default) | human | **machine** | **machine** |
+| `--format json` | human | **machine** | **machine** |
 | `--format csv` | — | — | **machine** |
 | JSON scalar typing (§4) | — | human | — |
 | `auth status` subcommand | human | human | human |
@@ -29,7 +29,7 @@ Each cell shows whether the section is implemented and how it is attested for th
 | `prime` subcommand | human | human | human |
 | Hermetic `--help` / flag-validation (§7) | **machine** | **machine** | **machine** |
 
-All implemented sections shipped across all three CLIs (April 25, 2026). The table is per-cell rather than per-row so partial-codec adoption (e.g. crono/liftoff implementing markdown+json but not csv) is visible without losing fidelity. Cells marked "human" are candidates for promotion to **machine** as the compat library grows and exporters wire it in via `compat.Runner.SupportedFormats`.
+All implemented sections shipped across all three CLIs (April 25, 2026). The table is per-cell rather than per-row so partial-codec adoption (e.g. crono/liftoff implementing markdown+json but not csv) is visible without losing fidelity. Cells marked "human" are candidates for promotion to **machine** as the compat library grows and as exporters make more of an already-wired bundle actually run — see [§8](#8-conformance-the-compat-library).
 
 ---
 
@@ -152,12 +152,25 @@ Out of scope: subcommands that do real work (`auth status`, `prime`, data subcom
 
 ## 8. Conformance (the compat library)
 
-Conformance to this contract is verified by [`compat/`](compat/README.md), a small black-box Go test library that lives in this repo and is imported by every `*-export-cli` from its own CI as adoption rolls out per-repo. Today the bundles self-test green in `quantcli/common`'s own CI on every PR; the consumer-wire PRs that import them into each `*-export-cli`'s CI are the next milestone, one per exporter. The current bundles:
+Conformance to this contract is verified by [`compat/`](compat/README.md), a small black-box Go test library that lives in this repo and is imported by every `*-export-cli` from its own CI. All three exporters run a bundle today. What still differs per cell is how much of each bundle actually asserts against a given exporter: a bundle wired in with `Runner.SkipDataPath: true` runs only the parse-level subtests, so the codec cells it would otherwise cover stay **human** until that exporter's data path is runnable in CI. The current bundles:
 
 - [`compat/dates`](compat/README.md) — pins down §3: that `--since` / `--until` are documented in `--help`, and that an invalid value exits non-zero with a stderr-only error. The bundle also pins down [§7](#7-hermeticity) for both the `--help` path and the date-parse-failure path.
 - [`compat/formats`](compat/README.md) — pins down §4: that `--format` is documented, an unknown value exits non-zero with a stderr-only error, `--format json` emits a parseable JSON array, `--format csv` emits at least a header row, and the default is byte-identical to `--format markdown`. The bundle additionally pins down [§7](#7-hermeticity) for the `--format` parse-failure path.
 
-A new exporter is not "in" the family until its CI runs at least the `dates` bundle green. The `formats` bundle ships with a `Runner.SupportedFormats` affordance so partial-codec exporters can adopt it without an immediate `--format csv` failure: declare the codecs you actually implement and the bundle skips codec-specific subtests for the rest. Each exporter's per-codec cells in the Status table flip from `human` to **machine** as it wires the bundle in; codecs not yet implemented stay at `—` until the writer lands.
+A new exporter is not "in" the family until its CI runs at least the `dates` bundle green. The `formats` bundle ships with a `Runner.SupportedFormats` affordance so partial-codec exporters can adopt it without an immediate `--format csv` failure: declare the codecs you actually implement and the bundle skips codec-specific subtests for the rest. A per-codec cell flips from `human` to **machine** when the bundle's subtest for that codec actually *runs* against the exporter — not merely when the bundle is wired in. Codecs not yet implemented stay at `—` until the writer lands.
+
+### Running the data path without credentials
+
+The codec subtests (`JSONIsArray`, `CSVHasHeader`, `DefaultIsMarkdown`) need the binary to reach a successful export, which normally means upstream credentials a clean CI runner does not have. `Runner.SkipDataPath: true` is the honest placeholder for that, but it leaves §4 attested at parse level only.
+
+The way out, in both exporters that have taken it, is a stub of the upstream API plus the CLI's own documented headless knobs — no credentials, no network, and no mocking of the exporter's own code, so the binary under test is the one CI ships:
+
+- **withings-export** stands up an `httptest.Server` returning the empty Withings envelope and points the binary at it with `WITHINGS_API_BASE`, writing a never-expired token into a scratch `HOME`.
+- **liftoff-export** does the same via an `internal/stubapi` package, using `LIFTOFF_API_BASE` + `LIFTOFF_REFRESH_TOKEN`.
+
+Both pass the stub's origin through `Runner.Env` along with a fixed `TZ`. The two differ in fixture: withings serves an empty result set, liftoff serves one workout. Either works — an empty fixture exercises the §4 empty-result rules, a non-empty one exercises the renderers. Serving an unknown procedure as a loud error rather than an empty success is worth doing in both cases, so a new call site fails in the stub instead of silently reporting zero rows.
+
+If your upstream has no API-base override, add one before reaching for `SkipDataPath`: it is the same env var a user needs when the upstream rotates hosts.
 
 ## 9. Versioning and releases
 
