@@ -27,8 +27,10 @@ on:
         default: ''
   # Run on PRs that touch the checker or its policy: this is the only trigger
   # that exercises the live API path before a change to it reaches the cron.
+  # Deliberately not filtered by base branch — a PR stacked on another PR needs
+  # this just as much as one targeting main, and the paths filter already keeps
+  # it off unrelated work.
   pull_request:
-    branches: [main]
     paths:
       - '.github/workflows/scan-freshness.yml'
       - '.github/scan-freshness.json'
