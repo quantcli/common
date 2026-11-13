@@ -39,7 +39,12 @@ on:
   # traffic — detection would depend on commit activity, which is unrelated to
   # whether we are vulnerable. Offset minute avoids on-the-hour GitHub congestion.
   # Note: GitHub only runs `schedule` from the default branch, and auto-disables
-  # scheduled workflows in a public repo after 60 days with no repository activity.
+  # scheduled workflows in a public repo after 60 days with no repository
+  # activity — silently, as far as this file is concerned. That is watched from
+  # quantcli/common by .github/workflows/scan-freshness.yml, which goes red if
+  # any repo's security.yml is disabled, missing, or has not completed a
+  # successful run on its default branch within 48h. See SECURITY.md
+  # "Scan freshness monitoring".
   schedule:
     - cron: '17 6 * * *'
   workflow_dispatch:
