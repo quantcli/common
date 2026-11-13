@@ -3,8 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
+  # Every pull request, not just those targeting main: with `branches: [main]`
+  # a PR stacked on another PR's branch got no CI at all, so code could reach
+  # main through a chain where it was never linted or tested on its own.
   pull_request:
-    branches: [main]
 
 # Default-deny at workflow level; jobs grant only what they need.
 permissions: {}
@@ -52,8 +54,10 @@ jobs:
   compat:
     name: compat module (vet + self-test)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       - id: detect
         name: detect compat module
         run: |
@@ -63,7 +67,7 @@ jobs:
             echo "has_compat=false" >> "$GITHUB_OUTPUT"
             echo "::notice::No compat/go.mod present; skipping compat job."
           fi
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         if: steps.detect.outputs.has_compat == 'true'
         with:
           go-version-file: compat/go.mod
@@ -88,4 +92,39 @@ jobs:
       - name: go test (compat self-test)
         if: steps.detect.outputs.has_compat == 'true'
         working-directory: compat
+        run: go test ./...
+
+  tools:
+    name: tools module (vet + gofmt + test)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          # tools is stdlib-only and analyses nothing we ship, so it is not
+          # bound by the go.mod pin the security.yml scanners use.
+          go-version: stable
+          cache: false
+      # These tests are the regression coverage for the scan-freshness checker:
+      # they pin the failure modes (cron auto-disabled for inactivity, deleted
+      # workflow, stale run, unreadable repo) that we cannot reproduce on demand
+      # against the live org. A change that stops detecting one of them fails here.
+      - name: go vet (tools)
+        working-directory: tools
+        run: go vet ./...
+      - name: gofmt (tools)
+        working-directory: tools
+        run: |
+          diff="$(gofmt -l .)"
+          if [ -n "$diff" ]; then
+            echo "gofmt diff in:"
+            echo "$diff"
+            echo "---"
+            gofmt -d .
+            exit 1
+          fi
+      - name: go test (tools)
+        working-directory: tools
         run: go test ./...

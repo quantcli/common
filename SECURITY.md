@@ -46,7 +46,7 @@ Every PR — in `common` and in every `*-export-cli` — is gated on a CI workfl
 - `osv-scanner` for transitive vulnerabilities across the OSV database.
 - A license-policy check that allowlists only permissive licenses.
 
-The same checks re-run on a daily schedule (06:17 UTC) on each repo's default branch, so an advisory published against a dependency we already ship is caught within a day rather than waiting for the next PR.
+The same checks re-run on a daily schedule (06:17 UTC) on each repo's default branch, so an advisory published against a dependency we already ship is caught within a day rather than waiting for the next PR. That daily schedule is itself monitored — see [Scan freshness monitoring](#scan-freshness-monitoring) below.
 
 **License allowlist** (SPDX identifiers, sorted by SPDX id; must match `ALLOWED_LICENSES` in `.github/workflows/security.yml` exactly):
 
@@ -68,6 +68,34 @@ The same checks re-run on a daily schedule (06:17 UTC) on each repo's default br
 - "Custom" or unidentified licenses where the SPDX identifier cannot be resolved.
 
 A PR that introduces a denied license is blocked. To request an exception, open an issue against `quantcli/common` with the dependency name, version, license text, and the rationale. Exceptions are rare and case-by-case.
+
+### Scan freshness monitoring
+
+A daily scan is only a control while it is actually running. GitHub **disables scheduled workflows in a public repository after 60 days with no repository activity**, and announces that by email rather than by failing anything — so the daily re-scan above would switch itself off in exactly the case it exists for (a quiet repo), while the Actions tab kept showing green, because the last run that ever happened was green.
+
+`quantcli/common` therefore runs a watcher: [`.github/workflows/scan-freshness.yml`](.github/workflows/scan-freshness.yml), daily at **07:42 UTC**, one hour after the scan cron. Unlike `security.yml` it is **not** copied into the export-clis — one watcher sweeps the whole org. It enumerates every repo in the `quantcli` organisation and requires each one to have:
+
+- a `security.yml` workflow that is in state `active` (not disabled, by GitHub or by hand), and
+- a **successful** completed run of it on the default branch within the **freshness window of 48 hours** — wide enough to absorb one missed daily run, tight enough that two consecutive misses are loud.
+
+Anything else is a red build, with a reason code:
+
+| Reason | Meaning | How to clear it |
+|---|---|---|
+| `stale` | The newest completed run on the default branch is older than the window. | Re-run `security.yml` in that repo; if the cron was auto-disabled, re-enable it and push something. |
+| `workflow-disabled` | `security.yml` exists but is not `active` — this is the 60-day auto-disable, or a manual one. | Re-enable it from the repo's Actions tab, then dispatch a run. |
+| `workflow-missing` | The repo has no `security.yml` at all — a new repo nobody wired up, or a deleted/renamed file. | Copy the workflow from `common` (see [CONTRIBUTING.md](CONTRIBUTING.md)), or add an exemption with a reason. |
+| `no-completed-run` | The workflow exists but has never finished a run on the default branch. | Dispatch one. |
+| `scan-red` | The scan is running on schedule but its latest verdict is a failure. Coverage is fine; the repo is not clean. | Triage the finding per [TRIAGE.md](TRIAGE.md). |
+| `unreadable` | The repo's Actions metadata could not be read. An unreadable repo is treated as an unscanned repo rather than silently skipped. | Check token scope and repo visibility. |
+
+**Alerting path.** The watcher's job goes red, and on scheduled runs it also opens — or comments on, if one is already open — a GitHub issue in `quantcli/common` titled **"Security scan freshness check failed"**, carrying the per-repo table. The issue exists because a failing *scheduled* workflow only emails the account that last touched the cron, which is a notification nobody reliably reads; an open issue in the org's main repo is visible to everyone watching it. The issue reports scan **coverage** only — repo names, reason codes, run links — never vulnerability details.
+
+**Exemptions** live in [`.github/scan-freshness.json`](.github/scan-freshness.json) and each carries a written reason. Discovery is org-wide and opt-out, not an allowlist, so a newly created repo is covered the day it appears unless somebody argues in a PR for why it should not be.
+
+**Residual risk, stated plainly:** the watcher is itself a scheduled workflow in a public repo, so it is subject to the same 60-day rule it exists to catch, and nothing watches the watcher. The mitigation is that `common` is the org's most active repo — 60 days of total silence there would be its own alarm — plus GitHub's warning email before a cron is disabled. A second, independent watcher outside GitHub Actions would close this; it is not worth the machinery at the current size.
+
+To prove the check can still go red, run it from the Actions tab with the `max-age-hours` input set to `0.01`: every non-exempt repo should report `stale`.
 
 ## What's not in this policy yet
 
