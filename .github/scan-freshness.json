@@ -1,0 +1,15 @@
+{
+  "org": "quantcli",
+  "workflow": "security.yml",
+  "maxAgeHours": 48,
+  "exempt": [
+    {
+      "repo": ".github",
+      "reason": "Org profile and community-health files only. No code, no dependency manifest, nothing for govulncheck or osv-scanner to read."
+    },
+    {
+      "repo": "homebrew-tap",
+      "reason": "Generated Homebrew formulae that point at release artefacts built and scanned in the export-cli repos. The tap has no dependency tree of its own; scanning it would re-check nothing."
+    }
+  ]
+}
