@@ -137,11 +137,13 @@ Semantics:
 - **Non-nil subset** — must include both `markdown` and `json`; `formats.RunContract` fails immediately if either is missing. `CSVHasHeader` skips when `csv` is absent, while the parse-level subtests run regardless.
 - **Empty slice** — declares zero codecs and fails the §4 minimum check. Use nil to mean "all of §4".
 
-**Per-CLI flip plan.** When a consumer wires the bundle into its CI with `SupportedFormats` matching its actual surface, the CONTRACT.md Status table's `--format` row for that CLI flips to **machine** for the codecs it declares. Codecs the CLI does not implement remain human-attested per-cell until the writer lands. Today the Status table has one cell per (CLI, codec) so the flip is per-cell, not per-row.
+**Per-CLI flip plan.** When a consumer wires the bundle into its CI with `SupportedFormats` matching its actual surface, the CONTRACT.md Status table's `--format` row for that CLI flips to **machine** for the codecs it declares, provided their subtests actually run — a codec declared under `SkipDataPath: true` stays human-attested (see below). Codecs the CLI does not implement remain human-attested per-cell until the writer lands. Today the Status table has one cell per (CLI, codec) so the flip is per-cell, not per-row.
 
 ### Credentialless CI: `Runner.SkipDataPath`
 
-The bundle's three data-path subtests (`JSONIsArray`, `CSVHasHeader`, `DefaultIsMarkdown`) invoke the CLI with a real `--format` value and expect a clean exit — which means the data path has to be runnable in the CI environment. For crono (env-var auth), liftoff (stored OAuth token), and withings (OAuth refresh token), that is not true today: a vanilla `--format json` invocation under `compat`'s default empty env exits non-zero with "not logged in" before the JSON-array check fires.
+The bundle's three data-path subtests (`JSONIsArray`, `CSVHasHeader`, `DefaultIsMarkdown`) invoke the CLI with a real `--format` value and expect a clean exit — which means the data path has to be runnable in the CI environment. Every exporter here authenticates (crono by env-var, liftoff and withings by OAuth token), so a vanilla `--format json` invocation under `compat`'s default empty env exits non-zero with "not logged in" before the JSON-array check fires.
+
+**Prefer a stub to `SkipDataPath`.** withings and liftoff both get the data path running in CI with no credentials at all; see [Stubbing the upstream](#stubbing-the-upstream) below. Reach for `SkipDataPath` only when the CLI has no API-base override or no headless auth path. All three exporters here have both — crono already drives its built binary against `internal/cronotest.Fake` via `CRONOMETER_BASE_URL` in its own e2e tests, and has not yet passed that env through `Runner.Env` — so it should be a short-lived state in each.
 
 `compat.Runner.SkipDataPath` is the explicit escape hatch: when true, the data-path subtests skip with reason `data-path subtests disabled via Runner.SkipDataPath`. The parse-level subtests still run because they assert on flag parsing, not on a working data path. This lets an exporter wire the bundle in for parse-level attestation today, then flip the bool back to false later (once auth is mockable in CI or secrets are provisioned) to promote its codec rows from human to machine.
 
@@ -152,14 +154,44 @@ formats.RunContract(t, compat.Runner{
 })
 ```
 
-`SkipDataPath` and `SupportedFormats` compose: `nil` SupportedFormats + `SkipDataPath: true` is the typical liftoff/crono shape today (declare the full surface, but skip the data-path subtests until creds are available). Use `SupportedFormats: []string{...}` instead of `SkipDataPath: true` when the CLI structurally lacks a codec — those are two different gaps and should not be confused.
+`SkipDataPath` and `SupportedFormats` compose: `SupportedFormats: []string{"markdown", "json"}` + `SkipDataPath: true` is crono's shape today (declare the codecs it implements, and skip the data-path subtests until its stub is wired through `Runner.Env`). Use `SupportedFormats: []string{...}` instead of `SkipDataPath: true` when the CLI structurally lacks a codec — those are two different gaps and should not be confused.
+
+### Stubbing the upstream
+
+The better answer to "CI has no credentials" is to not need any. Both withings and liftoff stand up an in-process stub of the upstream API and point the binary at it through the CLI's own documented headless knobs, so the data-path subtests run for real:
+
+```go
+srv := stubapi.New(stubapi.SamplePosts) // httptest.Server speaking the upstream's wire shape
+defer srv.Close()
+
+formats.RunContract(t, compat.Runner{
+    Binary:      os.Getenv("LIFTOFF_EXPORT_BIN"),
+    Subcommands: subcommands,
+    Env: []string{
+        "LIFTOFF_API_BASE=" + srv.BaseURL(),     // API-base override
+        "LIFTOFF_REFRESH_TOKEN=stub-token",      // headless auth path
+        "HOME=" + t.TempDir(),                   // no real token file
+        "TZ=UTC",                                // stable local-day bucketing
+    },
+})
+```
+
+Nothing in the exporter is mocked — the binary under test is the one CI ships, running its real fetch/filter/render path against a controlled payload. Notes from the two implementations:
+
+- **`Runner.Env` replaces the child environment wholesale**, so list everything the binary needs. A fixed `TZ` matters whenever the fixture's timestamps get bucketed into local days.
+- **Pick the fixture deliberately.** withings serves an empty result set, which exercises the §4 empty-result rules; liftoff serves one workout, which exercises the renderers. Both are valid; they catch different bugs.
+- **Fail loudly on an unknown upstream procedure** rather than answering it with an empty success, so a new call site surfaces in the stub instead of silently reporting zero rows.
+- **The stub is test-only.** Keep it in a `_test.go` file or an `internal/` package nothing in `main`'s import graph reaches, so it never links into the released binary.
+
+If your upstream has no API-base override, add one before reaching for `SkipDataPath` — it is the same env var a user needs when the upstream rotates hosts.
 
 ## Local date-window coverage
 
 The `dates.RunResolvedWindow` check covers explicit date bounds in multiple
-local timezones, including both daylight-saving transitions. Crono, Liftoff,
-and Withings invoke it in their own compatibility CI. It verifies the reported
-window; request and filtering behavior requires exporter-specific tests.
+local timezones, including both daylight-saving transitions. Liftoff and
+Withings invoke it in their own compatibility CI. Crono defines the test
+(`TestContractResolvedWindow`) but its CI `-run` filter does not select it yet.
+It verifies the reported window; request and filtering behavior requires exporter-specific tests.
 
 ## Adding a new contract test
 
