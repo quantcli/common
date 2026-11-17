@@ -8,8 +8,8 @@ The contract exists so that, once you have used one of these CLIs, the others fe
 
 Each cell shows whether the section is implemented and how it is attested for that CLI:
 
-- **machine** — a [`compat/`](compat/README.md) bundle covering this cell self-tests green in `quantcli/common`'s own CI on every PR here, *and* the exporter's own CI runs that bundle against its built binary on every PR to its repo. Both halves are required: a bundle nobody runs attests nothing, and a bundle whose subtests all skip attests nothing either.
-- **human** — implemented; verified only by review at merge time. A cell stays **human** when no bundle covers it, or when a bundle covers it but the exporter has the relevant subtests switched off — `Runner.SkipDataPath` and `Runner.SupportedFormats` both do that deliberately and visibly, naming the gap in test output.
+- **machine** — a [`compat/`](compat/README.md) bundle covers this cell, self-tests green in `quantcli/common`'s own CI on every PR here, *and* the exporter's own CI runs **that cell's subtests** against its built binary on every PR to its repo. All three are required: a bundle nobody runs attests nothing, and a subtest that skips — or that the exporter's CI never selects — attests nothing about the cell it would have covered.
+- **human** — implemented; verified only by review at merge time. A cell stays **human** when no bundle covers it, when the exporter's CI does not run the bundle function that covers it, or when it runs that bundle with this cell's subtests switched off. `Runner.SkipDataPath` and `Runner.SupportedFormats` are today's switches; both skip with a named reason rather than silently.
 - **—** — not implemented yet.
 - **n/a** — does not apply to this CLI's upstream (e.g. precedence rules for a token file the CLI never writes).
 
@@ -17,9 +17,9 @@ Each cell shows whether the section is implemented and how it is attested for th
 |---|---|---|---|
 | Repo naming (`{service}-export-cli`) | human | human | human |
 | Timezone policy | human | human | human |
-| Date flags (`--since` / `--until`) — surface | **machine** | **machine** | **machine** |
-| Date flags — local-midnight semantics | **machine** | **machine** | **machine** |
-| `--format` flag surface (documented, rejects unknown) | human | **machine** | **machine** |
+| Date flags (`--since` / `--until`) — surface | **machine** | human | human |
+| Date flags — local-midnight semantics | human | **machine** | **machine** |
+| `--format` flag surface (documented, rejects unknown) | **machine** | **machine** | **machine** |
 | `--format markdown` (default) | human | **machine** | **machine** |
 | `--format json` | human | **machine** | **machine** |
 | `--format csv` | — | — | **machine** |
@@ -27,9 +27,9 @@ Each cell shows whether the section is implemented and how it is attested for th
 | `auth status` subcommand | human | human | human |
 | Headless auth precedence (env over token file) | n/a | human | human |
 | `prime` subcommand | human | human | human |
-| Hermetic `--help` / flag-validation (§7) | **machine** | **machine** | **machine** |
+| Hermetic `--help` / flag-validation (§7) | **machine** | human | human |
 
-All implemented sections shipped across all three CLIs (April 25, 2026). The table is per-cell rather than per-row so partial-codec adoption (e.g. crono/liftoff implementing markdown+json but not csv) is visible without losing fidelity. Cells marked "human" are candidates for promotion to **machine** as the compat library grows and as exporters make more of an already-wired bundle actually run — see [§8](#8-conformance-the-compat-library).
+All implemented sections shipped across all three CLIs (April 25, 2026). The table is per-cell rather than per-row so partial-codec adoption (e.g. crono/liftoff implementing markdown+json but not csv) is visible without losing fidelity. Cells marked "human" are candidates for promotion to **machine** as the compat library grows and as exporters make more of an already-wired bundle actually run — see [§8](#8-conformance-the-compat-library), which lists the cells that are one small exporter change away.
 
 ---
 
@@ -152,25 +152,23 @@ Out of scope: subcommands that do real work (`auth status`, `prime`, data subcom
 
 ## 8. Conformance (the compat library)
 
-Conformance to this contract is verified by [`compat/`](compat/README.md), a small black-box Go test library that lives in this repo and is imported by every `*-export-cli` from its own CI. All three exporters run a bundle today. What still differs per cell is how much of each bundle actually asserts against a given exporter: a bundle wired in with `Runner.SkipDataPath: true` runs only the parse-level subtests, so the codec cells it would otherwise cover stay **human** until that exporter's data path is runnable in CI. The current bundles:
+Conformance to this contract is verified by [`compat/`](compat/README.md), a small black-box Go test library that lives in this repo and is imported by every `*-export-cli` from its own CI. All three exporters run a bundle today. What still differs per cell is how much of each bundle actually asserts against a given exporter. Two things narrow it: a bundle wired in with `Runner.SkipDataPath: true` runs only the parse-level subtests, so the codec cells it would otherwise cover stay **human** until that exporter's data path runs in CI; and each bundle entry point (`dates.RunContract`, `dates.RunResolvedWindow`, `formats.RunContract`) attests only where an exporter's test calls it *and* its CI `-run` filter selects that test. The current bundles:
 
-- [`compat/dates`](compat/README.md) — pins down §3: that `--since` / `--until` are documented in `--help`, and that an invalid value exits non-zero with a stderr-only error. The bundle also pins down [§7](#7-hermeticity) for both the `--help` path and the date-parse-failure path.
+- [`compat/dates`](compat/README.md) — `dates.RunContract` pins down §3's surface: that `--since` / `--until` are documented in `--help`, and that an invalid value exits non-zero with a stderr-only error. It also pins down [§7](#7-hermeticity) for both the `--help` path and the date-parse-failure path. `dates.RunResolvedWindow` is a separate entry point that pins down §3's local-midnight semantics and nothing else.
 - [`compat/formats`](compat/README.md) — pins down §4: that `--format` is documented, an unknown value exits non-zero with a stderr-only error, `--format json` emits a parseable JSON array, `--format csv` emits at least a header row, and the default is byte-identical to `--format markdown`. The bundle additionally pins down [§7](#7-hermeticity) for the `--format` parse-failure path.
 
 A new exporter is not "in" the family until its CI runs at least the `dates` bundle green. The `formats` bundle ships with a `Runner.SupportedFormats` affordance so partial-codec exporters can adopt it without an immediate `--format csv` failure: declare the codecs you actually implement and the bundle skips codec-specific subtests for the rest. A per-codec cell flips from `human` to **machine** when the bundle's subtest for that codec actually *runs* against the exporter — not merely when the bundle is wired in. Codecs not yet implemented stay at `—` until the writer lands.
 
+Where the Status table stands against that rule today, so the remaining `human` cells in bundle-covered rows read as a work list rather than a mystery:
+
+- **crono-export** calls all three entry points, but its CI filter (`-run 'TestContract(Dates|Formats)'`) does not select its `TestContractResolvedWindow`, so the local-midnight cell is `human`; and it runs `formats.RunContract` with `SkipDataPath: true`, so its codec cells are `human` while its `--format` flag-surface cell is **machine**.
+- **liftoff-export** and **withings-export** call `formats.RunContract` and `dates.RunResolvedWindow` but not `dates.RunContract`, so their date-flag surface cells are `human`. Their §7 cells are `human` for the same reason: only the `--format` parse-failure path is exercised there, not the `--help` path or the date-parse-failure path.
+
+`dates.RunContract` is entirely parse-level and needs no credentials or stub, so each of those gaps is a one-function or one-regex change in the exporter's repo.
+
 ### Running the data path without credentials
 
-The codec subtests (`JSONIsArray`, `CSVHasHeader`, `DefaultIsMarkdown`) need the binary to reach a successful export, which normally means upstream credentials a clean CI runner does not have. `Runner.SkipDataPath: true` is the honest placeholder for that, but it leaves §4 attested at parse level only.
-
-The way out, in both exporters that have taken it, is a stub of the upstream API plus the CLI's own documented headless knobs — no credentials, no network, and no mocking of the exporter's own code, so the binary under test is the one CI ships:
-
-- **withings-export** stands up an `httptest.Server` returning the empty Withings envelope and points the binary at it with `WITHINGS_API_BASE`, writing a never-expired token into a scratch `HOME`.
-- **liftoff-export** does the same via an `internal/stubapi` package, using `LIFTOFF_API_BASE` + `LIFTOFF_REFRESH_TOKEN`.
-
-Both pass the stub's origin through `Runner.Env` along with a fixed `TZ`. The two differ in fixture: withings serves an empty result set, liftoff serves one workout. Either works — an empty fixture exercises the §4 empty-result rules, a non-empty one exercises the renderers. Serving an unknown procedure as a loud error rather than an empty success is worth doing in both cases, so a new call site fails in the stub instead of silently reporting zero rows.
-
-If your upstream has no API-base override, add one before reaching for `SkipDataPath`: it is the same env var a user needs when the upstream rotates hosts.
+The codec subtests need the binary to reach a successful export. An exporter SHOULD make that possible without credentials, by providing an API-base override and a headless auth path that a test can point at an in-process stub of the upstream — the binary under test stays the one CI ships. `Runner.SkipDataPath: true` is the explicit fallback and leaves §4 attested at parse level only. See [`compat/README.md`](compat/README.md#stubbing-the-upstream) for the pattern and the per-exporter specifics.
 
 ## 9. Versioning and releases
 
