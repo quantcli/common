@@ -98,7 +98,7 @@ The check exists because two consecutive PRs landed `CONTRACT §5:` quotes that 
 
 Every PR — here and in each `*-export-cli` — is gated on the `security` workflow defined in [`.github/workflows/security.yml`](.github/workflows/security.yml). It runs three checks:
 
-- **`govulncheck`** — Go vulnerability database scan against the module's full dependency closure (skipped when there is no `go.mod`).
+- **`govulncheck`** — Go vulnerability database scan against the full dependency closure of every Go module in the repo. Modules are discovered by walking the tree, and finding none fails the job rather than skipping it.
 - **`osv-scanner`** — OSV transitive vulnerability scan over the working tree.
 - **License policy** — every direct + transitive Go dependency must resolve to one of the permissive SPDX ids listed in [`SECURITY.md`](SECURITY.md#supply-chain-policy). GPL-family, SSPL, BSL, and other non-permissive licenses are blocking.
 
@@ -112,7 +112,7 @@ To propose a security policy change (allowlist, severity bar, or workflow toolin
 
 ### Where the workflow lives, and when to centralize it
 
-The `security` workflow is **copied verbatim** into every repo that runs it (`quantcli/common` plus each `*-export-cli`). `quantcli/common` is the source of truth; the `# security.yml v2 — source of truth: quantcli/common` marker at the top of each copy is the version key. When you change the workflow in `common`, propagate the change (and bump the version) to every repo that runs it. A future drift-check job will key off that marker.
+The `security` workflow is **copied verbatim** into every repo that runs it (`quantcli/common` plus each `*-export-cli`). `quantcli/common` is the source of truth; the `# security.yml v3 — source of truth: quantcli/common` marker at the top of each copy is the version key. When you change the workflow in `common`, propagate the change (and bump the version) to every repo that runs it. A future drift-check job will key off that marker.
 
 One line is expected to differ between copies: the header's pointer to this document is relative in `common` (`CONTRIBUTING.md`) and qualified in the export-clis (`quantcli/common CONTRIBUTING.md`). Everything else should match byte for byte.
 
