@@ -184,16 +184,28 @@ func (a *httpAPI) LatestCompletedRun(org, repo string, workflowID int64, branch 
 	var out struct {
 		Runs []Run `json:"workflow_runs"`
 	}
-	// branch= filters out pull_request runs (those are attributed to the head
-	// branch), so what comes back is push / schedule / workflow_dispatch on the
-	// default branch — the runs that actually represent "main is scanned".
-	path := fmt.Sprintf("/repos/%s/%s/actions/workflows/%d/runs?branch=%s&status=completed&per_page=1",
+	// branch= matches a run's head branch, which keeps out pull requests from
+	// branches inside the repo but not one opened from a fork's own `main`:
+	// that run is attributed to head branch "main" too. Left in, a green fork
+	// PR would read as "main was scanned" and mask a dead cron, and a red one
+	// would read as scan-red. So fetch a page and take the newest run that is
+	// not a pull_request event — push / schedule / workflow_dispatch are the
+	// runs that actually represent "the default branch is scanned".
+	path := fmt.Sprintf("/repos/%s/%s/actions/workflows/%d/runs?branch=%s&status=completed&per_page=20",
 		url.PathEscape(org), url.PathEscape(repo), workflowID, url.QueryEscape(branch))
 	if err := a.get(path, &out); err != nil {
 		return nil, err
 	}
-	if len(out.Runs) == 0 {
-		return nil, nil
+	for i := range out.Runs {
+		if !isPullRequestEvent(out.Runs[i].Event) {
+			return &out.Runs[i], nil
+		}
 	}
-	return &out.Runs[0], nil
+	return nil, nil
+}
+
+// isPullRequestEvent reports whether a run was triggered by a pull request
+// rather than by activity on the branch itself.
+func isPullRequestEvent(event string) bool {
+	return event == "pull_request" || event == "pull_request_target"
 }
