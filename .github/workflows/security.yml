@@ -1,4 +1,4 @@
-# security.yml v3 — source of truth: quantcli/common; sync changes to every *-export-cli.
+# security.yml v4 — source of truth: quantcli/common; sync changes to every *-export-cli.
 # Bump the version when this workflow changes materially; a future drift-check job will key off it.
 # See CONTRIBUTING.md "Supply-chain and security" for the propagation policy and the >5-repos
 # switchover trigger to a reusable workflow_call.
@@ -22,6 +22,22 @@ name: security
 #   discovery finds nothing is a bug in the detection, not an empty repo. That hard
 #   failure is the regression check for the bug above — it is what would have caught
 #   the silent-skip state.
+#
+#   Every discovered module is scanned. Choosing which one drives setup-go is a
+#   separate question, because setup-go accepts exactly one `go-version-file` and
+#   that toolchain is the one that ANALYSES our code (see "Go-version policy"
+#   below). So selection ranges over the modules we SHIP: a go.mod carrying a
+#   `// quantcli:not-shipped` comment line is org-internal tooling, and is scanned
+#   but never allowed to choose the toolchain. Rationale in QUA-99 — the previous
+#   rule ranged over every discovered module, so in `common` the product module won
+#   only because `compat` happened to declare a higher `go` directive than
+#   `tools`. Since `tools` is explicitly licensed to run ahead of the product pin
+#   (ci.yml builds it with `go-version: stable`), a routine dev-tooling bump would
+#   have inverted that and started scanning shipped code under a newer toolchain
+#   than we release — a green scan over a vulnerable library. Regression test:
+#   tools/scanfreshness's sibling, tools/securityworkflow, which runs these blocks
+#   against synthetic trees. Repos with no marked module — the three export-clis —
+#   select exactly as before.
 #
 # Go-version policy (one rule, two consequences — the jobs below look inconsistent
 # on purpose):
@@ -101,11 +117,34 @@ jobs:
           echo "Discovered ${#modfiles[@]} Go module(s):"
           printf '  %s\n' "${modfiles[@]}"
 
-          # setup-go accepts exactly one go-version-file, so pick the module with the
-          # highest `go` directive: a toolchain older than that could not build it,
-          # whereas a newer one builds every other discovered module fine.
+          # Every discovered module is scanned, but only a module we SHIP may drive
+          # setup-go — see "Module discovery" at the top of this file. A go.mod with
+          # a `// quantcli:not-shipped` comment line is org-internal tooling:
+          # scanned, never allowed to choose the toolchain that analyses shipped
+          # code (QUA-99). This block is duplicated in the other job that pins a
+          # discovered go.mod; tools/securityworkflow asserts the two agree.
+          shipped=()
+          for f in "${modfiles[@]}"; do
+            if grep -Eq '^[[:space:]]*//[[:space:]]*quantcli:not-shipped([[:space:]]|$)' "$f"; then
+              echo "  not shipped, excluded from version-file selection: ${f}"
+            else
+              shipped+=("$f")
+            fi
+          done
+
+          if [ "${#shipped[@]}" -eq 0 ]; then
+            # No shipped module means no product pin to protect, so the plain rule
+            # is correct here — but this is also what a mis-marked repo looks like,
+            # so say which case we think it is rather than choosing silently.
+            echo "::warning::Every discovered Go module is marked '// quantcli:not-shipped', so there is no shipped module to pin the scanning toolchain to. Selecting across all discovered modules instead. If this repo does ship a module, remove the marker from its go.mod."
+            shipped=("${modfiles[@]}")
+          fi
+
+          # Among the shipped modules the highest `go` directive wins: a toolchain
+          # older than that could not build them all, whereas a newer one builds the
+          # rest fine. setup-go takes exactly one file, hence a single winner.
           version_file=$(
-            for f in "${modfiles[@]}"; do
+            for f in "${shipped[@]}"; do
               printf '%s %s\n' "$(awk '$1 == "go" { print $2; exit }' "$f")" "$f"
             done | sort -V -k1,1 | tail -1 | cut -d' ' -f2
           )
@@ -234,6 +273,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Exclusions: .git holds no buildable source; vendor/ and testdata/ contain
+          # go.mod files belonging to other modules or to fixtures, which are not ours
+          # to scan. `%P` prints the path with the leading './' already stripped.
           mapfile -t modfiles < <(
             find . -name go.mod \
               -not -path './.git/*' \
@@ -250,8 +292,34 @@ jobs:
           echo "Discovered ${#modfiles[@]} Go module(s):"
           printf '  %s\n' "${modfiles[@]}"
 
+          # Every discovered module is scanned, but only a module we SHIP may drive
+          # setup-go — see "Module discovery" at the top of this file. A go.mod with
+          # a `// quantcli:not-shipped` comment line is org-internal tooling:
+          # scanned, never allowed to choose the toolchain that analyses shipped
+          # code (QUA-99). This block is duplicated in the other job that pins a
+          # discovered go.mod; tools/securityworkflow asserts the two agree.
+          shipped=()
+          for f in "${modfiles[@]}"; do
+            if grep -Eq '^[[:space:]]*//[[:space:]]*quantcli:not-shipped([[:space:]]|$)' "$f"; then
+              echo "  not shipped, excluded from version-file selection: ${f}"
+            else
+              shipped+=("$f")
+            fi
+          done
+
+          if [ "${#shipped[@]}" -eq 0 ]; then
+            # No shipped module means no product pin to protect, so the plain rule
+            # is correct here — but this is also what a mis-marked repo looks like,
+            # so say which case we think it is rather than choosing silently.
+            echo "::warning::Every discovered Go module is marked '// quantcli:not-shipped', so there is no shipped module to pin the scanning toolchain to. Selecting across all discovered modules instead. If this repo does ship a module, remove the marker from its go.mod."
+            shipped=("${modfiles[@]}")
+          fi
+
+          # Among the shipped modules the highest `go` directive wins: a toolchain
+          # older than that could not build them all, whereas a newer one builds the
+          # rest fine. setup-go takes exactly one file, hence a single winner.
           version_file=$(
-            for f in "${modfiles[@]}"; do
+            for f in "${shipped[@]}"; do
               printf '%s %s\n' "$(awk '$1 == "go" { print $2; exit }' "$f")" "$f"
             done | sort -V -k1,1 | tail -1 | cut -d' ' -f2
           )
