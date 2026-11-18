@@ -15,8 +15,22 @@
 name: scan freshness
 
 on:
-  # One hour and change after the daily security.yml cron at 06:17 UTC, so a
-  # scan that started on time has finished before we judge it.
+  # Nominally 85 minutes after the daily security.yml cron at 06:17 UTC. Do not
+  # read that gap as an ordering guarantee — it is not one, and the first
+  # version of this comment claimed it was.
+  #
+  # Measured 2026-11-18 against the one long-lived cron in this org
+  # (liftoff-export-cli's api-host-probe.yml, `0 14 * * *`, 194 scheduled runs):
+  # GitHub started it between 4.4h and 9.2h late on every one of the preceding
+  # 12 days, mean ~6.6h, never once within the hour. Scheduled runs here are
+  # best-effort and queue behind the hosted-runner backlog, so on any given day
+  # this watcher may run before, between, or after the scans it is judging.
+  #
+  # That is survivable only because the freshness window is 48h rather than 24h:
+  # a judgement made mid-queue still sees yesterday's successful scan and passes.
+  # A 24h window would flap daily on scheduler jitter alone. Treat the 48h window
+  # in .github/scan-freshness.json as the actual contract and the cron time as a
+  # hint — and if you ever tighten the window, re-measure the lag first.
   schedule:
     - cron: '42 7 * * *'
   workflow_dispatch:

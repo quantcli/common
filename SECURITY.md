@@ -73,10 +73,15 @@ A PR that introduces a denied license is blocked. To request an exception, open 
 
 A daily scan is only a control while it is actually running. GitHub **disables scheduled workflows in a public repository after 60 days with no repository activity**, and announces that by email rather than by failing anything — so the daily re-scan above would switch itself off in exactly the case it exists for (a quiet repo), while the Actions tab kept showing green, because the last run that ever happened was green.
 
-`quantcli/common` therefore runs a watcher: [`.github/workflows/scan-freshness.yml`](.github/workflows/scan-freshness.yml), daily at **07:42 UTC**, one hour after the scan cron. Unlike `security.yml` it is **not** copied into the export-clis — one watcher sweeps the whole org. It enumerates every repo in the `quantcli` organisation and requires each one to have:
+`quantcli/common` therefore runs a watcher: [`.github/workflows/scan-freshness.yml`](.github/workflows/scan-freshness.yml), nominally daily at **07:42 UTC**, 85 minutes after the scan cron (but see the caveat on scheduler lag below — that gap is not an ordering guarantee). Unlike `security.yml` it is **not** copied into the export-clis — one watcher sweeps the whole org. It enumerates every repo in the `quantcli` organisation and requires each one to have:
 
 - a `security.yml` workflow that is in state `active` (not disabled, by GitHub or by hand), and
 - a **successful** completed run of it on the default branch within the **freshness window of 48 hours** — wide enough to absorb one missed daily run, tight enough that two consecutive misses are loud.
+
+**The window is the contract, not the cron times.** GitHub Actions runs `schedule` triggers on a best-effort basis, and in this org the lag is large and routine: measured on 2026-11-18 against our one long-lived cron (194 scheduled runs, nominal `0 14 * * *`), GitHub started it **4.4–9.2 hours late on each of the previous 12 days, mean ~6.6h, never once on time**. A scan nominally due at 06:17 UTC may genuinely not start until mid-afternoon, and the 07:42 watcher may run before, between, or after the scans it is judging. Two consequences worth knowing before anyone reports a bug:
+
+- **"No scheduled run yet by late morning" is not a defect.** Compare against the 48h window, not against the clock. The window is deliberately double the cadence so a judgement landing mid-queue still sees the previous day's successful scan.
+- **Do not tighten the window to 24h** without re-measuring the lag. At 24h this check would flap on scheduler jitter alone, and a detection control that cries wolf daily gets muted — strictly worse than not having one.
 
 Anything else is a red build, with a reason code:
 
