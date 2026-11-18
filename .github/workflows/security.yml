@@ -1,5 +1,5 @@
-# security.yml v3 — source of truth: quantcli/common; sync changes to every *-export-cli.
-# Bump the version when this workflow changes materially; a future drift-check job will key off it.
+# security.yml v4 — source of truth: quantcli/common; sync changes to every *-export-cli.
+# The marker records the workflow version for humans comparing copies; nothing enforces it.
 # See CONTRIBUTING.md "Supply-chain and security" for the propagation policy and the >5-repos
 # switchover trigger to a reusable workflow_call.
 
@@ -22,6 +22,9 @@ name: security
 #   discovery finds nothing is a bug in the detection, not an empty repo. That hard
 #   failure is the regression check for the bug above — it is what would have caught
 #   the silent-skip state.
+#
+#   Every module is scanned; `// quantcli:not-shipped` excludes a module only
+#   from toolchain selection, which uses the highest shipped `go` directive (QUA-99).
 #
 # Go-version policy (one rule, two consequences — the jobs below look inconsistent
 # on purpose):
@@ -101,11 +104,26 @@ jobs:
           echo "Discovered ${#modfiles[@]} Go module(s):"
           printf '  %s\n' "${modfiles[@]}"
 
-          # setup-go accepts exactly one go-version-file, so pick the module with the
-          # highest `go` directive: a toolchain older than that could not build it,
-          # whereas a newer one builds every other discovered module fine.
+          # Exclude marked modules only from toolchain selection; scan every module.
+          # Keep the pin on a shipped module (QUA-99).
+          shipped=()
+          for f in "${modfiles[@]}"; do
+            if grep -Eq '^[[:space:]]*//[[:space:]]*quantcli:not-shipped([[:space:]]|$)' "$f"; then
+              echo "  not shipped, excluded from version-file selection: ${f}"
+            else
+              shipped+=("$f")
+            fi
+          done
+
+          if [ "${#shipped[@]}" -eq 0 ]; then
+            # Warn and fall back to all modules when all are marked not shipped.
+            echo "::warning::Every discovered Go module is marked '// quantcli:not-shipped', so there is no shipped module to pin the scanning toolchain to. Selecting across all discovered modules instead. If this repo does ship a module, remove the marker from its go.mod."
+            shipped=("${modfiles[@]}")
+          fi
+
+          # Select the highest shipped `go` directive (QUA-99).
           version_file=$(
-            for f in "${modfiles[@]}"; do
+            for f in "${shipped[@]}"; do
               printf '%s %s\n' "$(awk '$1 == "go" { print $2; exit }' "$f")" "$f"
             done | sort -V -k1,1 | tail -1 | cut -d' ' -f2
           )
@@ -250,8 +268,26 @@ jobs:
           echo "Discovered ${#modfiles[@]} Go module(s):"
           printf '  %s\n' "${modfiles[@]}"
 
+          # Exclude marked modules only from toolchain selection; scan every module.
+          # Keep the pin on a shipped module (QUA-99).
+          shipped=()
+          for f in "${modfiles[@]}"; do
+            if grep -Eq '^[[:space:]]*//[[:space:]]*quantcli:not-shipped([[:space:]]|$)' "$f"; then
+              echo "  not shipped, excluded from version-file selection: ${f}"
+            else
+              shipped+=("$f")
+            fi
+          done
+
+          if [ "${#shipped[@]}" -eq 0 ]; then
+            # Warn and fall back to all modules when all are marked not shipped.
+            echo "::warning::Every discovered Go module is marked '// quantcli:not-shipped', so there is no shipped module to pin the scanning toolchain to. Selecting across all discovered modules instead. If this repo does ship a module, remove the marker from its go.mod."
+            shipped=("${modfiles[@]}")
+          fi
+
+          # Select the highest shipped `go` directive (QUA-99).
           version_file=$(
-            for f in "${modfiles[@]}"; do
+            for f in "${shipped[@]}"; do
               printf '%s %s\n' "$(awk '$1 == "go" { print $2; exit }' "$f")" "$f"
             done | sort -V -k1,1 | tail -1 | cut -d' ' -f2
           )

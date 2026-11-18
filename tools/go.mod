@@ -7,4 +7,8 @@
 // SECURITY.md "Supply-chain policy".
 module github.com/quantcli/common/tools
 
+// quantcli:not-shipped — do not remove this marker; security.yml greps for it.
+// It excludes this module from scanner toolchain selection only (QUA-99).
+// Without it, raising this module's `go` directive would make the scanner
+// analyse shipped code under a newer Go than we release.
 go 1.21

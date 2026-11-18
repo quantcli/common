@@ -100,6 +100,8 @@ Follow the [owner direction on proportionate security](SECURITY.md#owner-directi
 
 Before starting security work, briefly identify the user asset, plausible failure or attack path, concrete consequence, and smallest useful remedy. Urgency follows credible exploitation and material user harm. Batch routine dependency updates and hardening as ordinary maintenance. License compliance is a separate consideration, not an automatic security emergency.
 
+A Go module we do not ship declares `// quantcli:not-shipped` in its `go.mod` so the scanner toolchain pins to a module we ship (QUA-99).
+
 The deployed [`security.yml`](.github/workflows/security.yml) runs `govulncheck`, `osv-scanner`, and license-policy checks on pushes to `main`, PRs targeting `main`, manual dispatch, and daily at 06:17 UTC. Trigger corrections are reviewed separately. The scanners overlap on Go dependencies. A failed run needs assessment; it does not by itself establish an exploitable vulnerability. See [SECURITY.md](SECURITY.md#supply-chain-policy) for the current mechanics, license allowlist, and proposed simpler baseline. In `common`, the required branch-protection status is currently `Code owner approval`; scanner jobs are not separately required contexts.
 
 The existing [`scan-freshness.yml`](.github/workflows/scan-freshness.yml) in `common` checks Actions metadata across discovered org repos, with documented exemptions and a 48-hour window. It does not prove complete org visibility or coverage of shipped code. See [its scope and alerting behavior](SECURITY.md#scan-freshness-monitoring). A concise truthful scope limit is a valid stopping point.
@@ -110,7 +112,7 @@ If a PR fails the license-policy check, do not unblock it by adding a `replace` 
 
 ### Shared workflow maintenance
 
-`common` is the source for the `security.yml` copies used by exporters. The `# security.yml v3` header is a version marker, not an enforced drift check. The header's documentation pointer differs between `common` and exporter copies. For an approved shared workflow fix, check existing work and update affected copies together with a concise explanation of the benefit. Review toolchain-selection and propagation work for actual benefit before extending it.
+`common` is the source for the `security.yml` copies used by exporters. The `# security.yml v4` header is a version marker, not an enforced drift check. The header's documentation pointer differs between `common` and exporter copies. For an approved shared workflow fix, check existing work and update affected copies together with a concise explanation of the benefit. Review toolchain-selection and propagation work for actual benefit before extending it.
 
 `scan-freshness.yml` lives only in `common`. There is no standing commitment to add a drift checker, another watcher, or a reusable-workflow migration at a repo-count threshold. Any new machinery needs a concrete benefit and the owner decision above.
 

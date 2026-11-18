@@ -105,6 +105,7 @@ jobs:
         with:
           # tools is stdlib-only and analyses nothing we ship, so it is not
           # bound by the go.mod pin the security.yml scanners use.
+          # The `// quantcli:not-shipped` marker in tools/go.mod makes `go-version: stable` safe here.
           go-version: stable
           cache: false
       # These tests are the regression coverage for the scan-freshness checker:
