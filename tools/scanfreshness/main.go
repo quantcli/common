@@ -191,17 +191,46 @@ func (a *httpAPI) LatestCompletedRun(org, repo string, workflowID int64, branch 
 	// would read as scan-red. So fetch a page and take the newest run that is
 	// not a pull_request event — push / schedule / workflow_dispatch are the
 	// runs that actually represent "the default branch is scanned".
-	path := fmt.Sprintf("/repos/%s/%s/actions/workflows/%d/runs?branch=%s&status=completed&per_page=20",
+	//
+	// Deliberately NO `status=completed` here, even though that is exactly what
+	// we want and the API offers it. Measured 2026-11-18 against
+	// withings-export-cli: a scheduled run that self-reports `"status":
+	// "completed", "conclusion": "success"` was omitted from the response when
+	// `status=completed` (or `status=success`) was passed, while the same query
+	// without it returned the run first. The filter is served from an index
+	// that lags the run record, so it silently hides recent runs and we read a
+	// stale last-scan time — which over-reports age and fires a false `stale`
+	// alert. Filter on the status field client-side instead; it is accurate in
+	// the run body. See selectLatestRun.
+	path := fmt.Sprintf("/repos/%s/%s/actions/workflows/%d/runs?branch=%s&per_page=20",
 		url.PathEscape(org), url.PathEscape(repo), workflowID, url.QueryEscape(branch))
 	if err := a.get(path, &out); err != nil {
 		return nil, err
 	}
-	for i := range out.Runs {
-		if !isPullRequestEvent(out.Runs[i].Event) {
-			return &out.Runs[i], nil
+	return selectLatestRun(out.Runs), nil
+}
+
+// selectLatestRun picks the newest run that actually represents "the default
+// branch has been scanned": completed, and not triggered by a pull request.
+// The API returns runs newest-first, so the first match wins.
+//
+// Both filters are applied here rather than as query parameters on purpose —
+// see the note in LatestCompletedRun about `status=completed` dropping recent
+// runs. Queued and in-progress runs are skipped rather than treated as the
+// answer: a scan that has not finished has not produced a verdict, and
+// accepting it would report a repo as freshly scanned on the strength of a job
+// that might still fail.
+func selectLatestRun(runs []Run) *Run {
+	for i := range runs {
+		if runs[i].Status != "completed" {
+			continue
 		}
+		if isPullRequestEvent(runs[i].Event) {
+			continue
+		}
+		return &runs[i]
 	}
-	return nil, nil
+	return nil
 }
 
 // isPullRequestEvent reports whether a run was triggered by a pull request
