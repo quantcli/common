@@ -24,6 +24,8 @@ Each cell shows whether the section is implemented and how it is attested for th
 | `--format json` | human | **machine** | **machine** |
 | `--format csv` | — | — | **machine** |
 | JSON scalar typing (§4) | — | human | — |
+| Units declared in key names (§4) | — | — | — |
+| `json`/`csv` cross-codec parity (§4) | human | — | — |
 | `auth status` subcommand | human | human | human |
 | Headless auth precedence (env over token file) | n/a | human | human |
 | `prime` subcommand | human | human | human |
@@ -109,6 +111,33 @@ Output rules:
 
 Timestamps are the one deliberate exception: §2 fixes their formatting (RFC3339 with offset), so a `date` field MAY be a formatted string. Even then it is the *same* representation across every subcommand of a given CLI — one logical field, one shape.
 
+### Units and cross-codec parity
+
+Scalar typing above pins down a field's JSON *type*. It does not say what the number *means*, and it explicitly disclaims the other codecs. This clause closes both gaps: what unit a number is in, and how the `json` and `csv` views of one subcommand relate.
+
+**A dimensioned number declares its unit in its key name.** Durations, masses, distances and energies are unreadable as bare numbers — `duration` requires a guess, `duration_sec` does not. New fields MUST carry the unit in the key (`_sec`, `_min`, `_m`, `_km`, `_kg`, `_lb`, `_kcal`). This generalizes the display-value rule above: that rule says a formatted phrase needs a machine-readable sibling, and this one says a bare number needs a declared unit. Dimensionless counts (`steps`, `reps`, `wakeup_count`) and scores carry no suffix.
+
+**One logical field, one unit — in every codec and every subcommand.** The companion to "one logical field, one JSON type". A codec MUST NOT convert on the way out: a duration that is seconds in `json` is seconds in `csv`, not minutes. Converting per codec is what makes two outputs of one subcommand disagree about the same quantity, and it leaves a consumer no way to tell a unit change from a data change.
+
+**Where a sibling field selects the unit, the dispatch is documented.** Some upstreams reuse one column for different quantities — liftoff's `inputOne` is pounds for a weight-and-reps exercise and kilometres for a distance-and-duration one, selected by `exerciseTypes`. Re-emitting that is permitted; the upstream's shape is not ours to choose. But the dispatch field and its full mapping MUST appear in `prime` under SUBCOMMANDS, and the preferred fix is additive unit-named siblings (`weight_lb` / `distance_km`) beside the polymorphic field.
+
+**Existing unitless names are grandfathered, not blessed.** A field already emitted under a bare name MUST have its canonical unit documented in `prime`, and SHOULD gain a unit-named sibling. Renaming the bare field is a §9 major.
+
+**`csv` is a projection of the `json` record, not a second dataset.** `json` is the authoritative view; `csv` is a flat view of the same fields. Both exporters that added a `csv` codec after withings reached for this rule on their own and wrote it into their source, because this contract was silent — [crono](https://github.com/quantcli/crono-export-cli/blob/main/cmd/csv.go) ("one column per JSON key, named exactly as the JSON key … two views of the same rows") and [liftoff](https://github.com/quantcli/liftoff-export-cli/blob/main/cmd/csv.go) ("each column is the snake_case form of the JSON key it carries"). Neither had anything to hold it to: liftoff's codec does not in fact uphold its own stated rule on three of its four subcommands. A convention two repos describe and one of them keeps is exactly what a contract is for:
+
+- **Every CSV column names a field the `json` codec also emits for that subcommand.** The match is on the field name, under one case convention declared per CLI in `prime` — crono maps a key to a column verbatim, liftoff maps `camelCase` to `snake_case`. Either is fine; picking neither is not.
+- **CSV MAY omit and MAY denormalize.** A field that does not fit a flat row may be absent, and nested records may be flattened or expanded to one row per deepest repeated element with the parent's scalars repeated. Row *cardinality* is therefore not constrained; field *names and units* are.
+- **CSV MUST NOT invent.** A column with no `json` counterpart means the `json` codec is missing a field, and the fix is to add it to `json` — not to accept two datasets. A computed convenience column (withings `sleep`'s `total_sleep_min`, which `json` has no equivalent for) is exactly this case.
+- **A raw upstream passthrough does not satisfy parity.** Re-emitting an upstream blob verbatim (withings `sleep`/`workouts` `data{}`) is allowed and useful — nothing is lost — but the quantities inside it are not contract-conforming fields. The named, unit-declaring, projectable fields live at top level *alongside* the raw blob.
+
+**Posture when an exporter is out of conformance.** Close the gap additively, in this order, and never by reshaping what consumers already read:
+
+1. Add the missing top-level field or unit-named sibling to `json`. Additive, `minor` per §9. This is the whole fix for withings `sleep`.
+2. Document the mapping in `prime` where the shapes genuinely cannot converge.
+3. Rename or remove an emitted key only in a `major`, with a deprecation window and a CHANGELOG entry (§9).
+
+Reshaping or dropping an existing raw passthrough to reach parity is explicitly **not** preferred: it breaks every consumer reading it today to solve a problem an additive sibling already solves.
+
 ## 5. Auth
 
 Auth flows differ legitimately across upstreams (env-var basic auth, OAuth2, interactive credential prompts), but two surface elements are required of every CLI:
@@ -156,6 +185,7 @@ Conformance to this contract is verified by [`compat/`](compat/README.md), a sma
 
 - [`compat/dates`](compat/README.md) — `dates.RunContract` pins down §3's surface: that `--since` / `--until` are documented in `--help`, and that an invalid value exits non-zero with a stderr-only error. It also pins down [§7](#7-hermeticity) for both the `--help` path and the date-parse-failure path. `dates.RunResolvedWindow` is a separate entry point that pins down §3's local-midnight semantics and nothing else.
 - [`compat/formats`](compat/README.md) — pins down §4: that `--format` is documented, an unknown value exits non-zero with a stderr-only error, `--format json` emits a parseable JSON array, `--format csv` emits at least a header row, and the default is byte-identical to `--format markdown`. The bundle additionally pins down [§7](#7-hermeticity) for the `--format` parse-failure path.
+- [`compat/parity`](compat/README.md) — `parity.RunCrossCodec` pins down the machine-checkable half of [Units and cross-codec parity](#units-and-cross-codec-parity): that every `--format csv` column names a field `--format json` also emits for the same subcommand. It compares names only, ignoring case and `_` separators, so both declared case conventions pass and only a genuinely invented or renamed column fails. The unit half of that clause is **not** machine-checkable — a number carries no unit at runtime — so "one logical field, one unit" and the `prime` documentation duties stay review-attested. The bundle needs a working data path with at least one record; it skips with a named reason otherwise, which means an exporter cannot pass it vacuously by exporting nothing.
 
 A new exporter is not "in" the family until its CI runs at least the `dates` bundle green. The `formats` bundle ships with a `Runner.SupportedFormats` affordance so partial-codec exporters can adopt it without an immediate `--format csv` failure: declare the codecs you actually implement and the bundle skips codec-specific subtests for the rest. A per-codec cell flips from `human` to **machine** when the bundle's subtest for that codec actually *runs* against the exporter — not merely when the bundle is wired in. Codecs not yet implemented stay at `—` until the writer lands.
 
@@ -169,6 +199,8 @@ Where the Status table stands against that rule today, so the remaining `human` 
 ### Running the data path without credentials
 
 The codec subtests need the binary to reach a successful export. An exporter SHOULD make that possible without credentials, by providing an API-base override and a headless auth path that a test can point at an in-process stub of the upstream — the binary under test stays the one CI ships. `Runner.SkipDataPath: true` is the explicit fallback and leaves §4 attested at parse level only. See [`compat/README.md`](compat/README.md#stubbing-the-upstream) for the pattern and the per-exporter specifics.
+
+`compat/parity` raises that bar one step: a stub that answers with the *empty* result is enough for the `formats` bundle but not for `parity`, which has no JSON keys to compare CSV columns against and skips. An exporter adopting `parity` needs its stub to return at least one record per subcommand. Crono's and liftoff's stubs can already do this (liftoff's `stubapi.SamplePosts` ships a non-empty fixture; crono's `cronotest.Fake` takes per-subcommand CSV bodies); withings's returns `{"status":0,"body":{}}` to every call and needs a non-empty fixture before its cells can move.
 
 ## 9. Versioning and releases
 

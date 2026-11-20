@@ -27,6 +27,7 @@ import (
     "github.com/quantcli/common/compat"
     "github.com/quantcli/common/compat/dates"
     "github.com/quantcli/common/compat/formats"
+    "github.com/quantcli/common/compat/parity"
 )
 
 func TestContractDates(t *testing.T) {
@@ -185,6 +186,30 @@ Nothing in the exporter is mocked — the binary under test is the one CI ships,
 
 If your upstream has no API-base override, add one before reaching for `SkipDataPath` — it is the same env var a user needs when the upstream rotates hosts.
 
+## What `parity.RunCrossCodec` covers today
+
+| Subtest | Contract | What it asserts |
+|---|---|---|
+| `CSVColumnsExistInJSON` | §4 (units and cross-codec parity) | Every `--format csv` column names a field `--format json` also emits for the same subcommand. |
+
+```go
+parity.RunCrossCodec(t, compat.Runner{
+    Binary:      os.Getenv("EXPORT_CLI_BIN"),
+    Subcommands: subcommands,
+    Env:         env, // same stub wiring as the formats bundle
+})
+```
+
+One subtest, deliberately. §4's parity clause has two halves and only one is observable from outside the binary. "CSV MUST NOT invent" is checkable by comparing two invocations. "One logical field, one unit" is not: a JSON number carries no unit at runtime, so no black-box bundle can tell seconds from minutes. It only catches a unit change that also changed the *name* (`duration_sec` → `duration_min`), which the invented-column check already covers. Unit correctness, and the `prime` documentation duties for dispatch fields and grandfathered bare names, stay review-attested.
+
+What it deliberately does **not** check:
+
+- **Name spelling.** Comparison ignores case and `_`/`-` separators, because §4 lets each CLI declare one case convention — crono maps a JSON key to a column verbatim, liftoff maps `camelCase` to `snake_case`. Both pass; a rename or an invented column still fails.
+- **Row cardinality.** §4 explicitly permits CSV to denormalize a nested record into one row per deepest repeated element, so row counts are not compared. Field names and units are the invariant, not shape.
+- **Direction.** JSON is allowed to emit fields CSV omits (a raw upstream passthrough, an array that does not fit a flat row). Only the reverse is a violation.
+
+**The bundle needs a non-empty data path.** With zero records there are no JSON keys to compare against, so it skips with a named reason rather than passing vacuously — an exporter cannot earn this cell by exporting nothing. That is a higher bar than `formats`, where an empty-result stub is sufficient. Liftoff's `stubapi.SamplePosts` and crono's `cronotest.Fake` (which takes per-subcommand CSV bodies) already return records; withings's stub answers `{"status":0,"body":{}}` to every call and needs a non-empty fixture first.
+
 ## Local date-window coverage
 
 The `dates.RunResolvedWindow` check covers explicit date bounds in multiple
@@ -205,6 +230,8 @@ It verifies the reported window; request and filtering behavior requires exporte
 This module has its own tests that run each bundle against a stub CLI in `internal/stubcli/`. The stub is intentionally narrow — it exists so `go test ./...` from this module's root proves the library compiles and the assertions fire correctly, without depending on any of the real export-CLIs. Failures in the self-test mean the library has a bug; failures in an exporter's compat test mean the exporter drifted from the contract.
 
 The stub has two modes (`STUBCLI_MODE=flat` and `STUBCLI_MODE=cobra`). The flat-mode self-tests exercise the original Runner shape; the cobra-mode self-tests exercise `Subcommands`-based dispatch. In cobra mode, the stub's root `--help` deliberately omits `--since/--until/--format`, so the cobra-mode self-tests fail fast if `compat.Runner` ever stops prepending the subcommand. The stub emits an empty data set per `--format` codec (`[]` for json, a single header row for csv, nothing for markdown) so the formats bundle's data-path subtests run hermetically. There is also a focused unit test for `Runner.WithSubcommand` using an `argecho` helper that just prints `os.Args`.
+
+`STUBCLI_DATASET` selects which data set the stub emits, for the parity bundle's self-tests. Unset is the empty result above. `parity` emits one record whose CSV header is a conforming projection of its JSON keys — mixing a full flattened path, a bare nested leaf and an array-element leaf, so the bundle's acceptance of all three projections is pinned down rather than assumed. `drift` emits the same record with a CSV header carrying `duration_min` and `total_sleep_min`, reproducing [withings-export-cli#42](https://github.com/quantcli/withings-export-cli/issues/42) in miniature; the bundle must fail on it. `camel` is the liftoff shape — camelCase JSON keys projected to a snake_case header — so a bundle that compared names literally fails that self-test instead of failing every real liftoff subcommand. The conforming/drifting pair is what makes the bundle worth anything: one that only ever ran against a conforming stub would pass with its assertion deleted.
 
 The stub additionally honors `STUBCLI_FORMATS` (comma-separated) to restrict which codecs it will accept at parse time — used by the formats bundle's `TestRunContract_PartialCodec_SkipsCSV` self-test. Setting `STUBCLI_FORMATS=markdown,json` makes the stub reject `--format csv`, so the partial-codec self-test proves the `SupportedFormats` skip is actually load-bearing: without it, the test would fail at `CSVHasHeader` because the stub rejects csv.
 
