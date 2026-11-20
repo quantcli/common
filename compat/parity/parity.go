@@ -5,10 +5,12 @@
 //
 //   - Every column in `--format csv` names a field that `--format json`
 //     also emits for the same subcommand.
+//   - Every record in one `--format json` array carries the same
+//     top-level key set (CONTRACT §4, "Record shape").
 //
-// That is the whole of it, and the narrowness is deliberate. The clause
-// has two halves and only one of them is observable from outside the
-// binary:
+// That is the whole of it, and the narrowness is deliberate. The
+// cross-codec clause has two halves and only one of them is observable
+// from outside the binary:
 //
 //   - CONTRACT §4: "CSV MUST NOT invent." is checkable. A column with no
 //     json counterpart is visible by comparing two invocations.
@@ -31,7 +33,16 @@
 // The bundle needs a data path that returns at least one record. With
 // zero records there are no JSON keys to compare against, so it skips
 // with a named reason rather than passing vacuously — an exporter
-// cannot earn this cell by exporting nothing.
+// cannot earn this cell by exporting nothing. The key-set subtest
+// needs *two*: one record cannot disagree with itself, and it skips
+// with its own reason below that.
+//
+// What the key-set subtest cannot see, and what therefore stays
+// review-attested: whether the key set is stable across *accounts*.
+// Observing a device that reports less takes a second fixture, so the
+// bundle checks the within-one-export form of the rule — which is the
+// form that actually fails, because an upstream whose shape varies by
+// device usually varies within one window too.
 //
 // Exporter usage:
 //
@@ -100,6 +111,116 @@ func runOne(t *testing.T, r compat.Runner) {
 	t.Run("CSVColumnsExistInJSON", func(t *testing.T) {
 		csvColumnsExistInJSON(t, r)
 	})
+	t.Run("JSONKeySetIsUniform", func(t *testing.T) {
+		jsonKeySetIsUniform(t, r)
+	})
+}
+
+// jsonKeySetIsUniform asserts §4's "Record shape" rule in the form a
+// black-box test can see it: every record in one `--format json` array
+// carries the same top-level keys.
+//
+// This is the check that catches an exporter passing an upstream
+// envelope through, where the key set is whatever the user's device
+// reported. The symptom is that no consumer can rely on a field
+// existing, and it is invisible in a one-record fixture — which is why
+// this skips rather than passes below two records.
+//
+// Only the top level is compared. §4 holds nested records to the same
+// rule, but a nested collection legitimately varies in *length*, and
+// distinguishing "this lap has no heart rate" from "laps are a
+// different kind of record here" needs a schema the bundle does not
+// have.
+func jsonKeySetIsUniform(t *testing.T, r compat.Runner) {
+	t.Helper()
+	if r.SkipDataPath {
+		t.Skipf("data-path subtests disabled via Runner.SkipDataPath")
+	}
+	if !r.SupportsFormat(compat.FormatJSON) {
+		t.Skipf("--format json not declared in Runner.SupportedFormats")
+	}
+
+	records := jsonRecords(t, r)
+	if len(records) < 2 {
+		t.Skipf("--format json returned %d record(s); a key set needs two records to disagree. "+
+			"Point the bundle at a data path that yields at least two (see compat/README.md#stubbing-the-upstream)", len(records))
+	}
+
+	// A non-object record has no key set to compare. Report it rather
+	// than skipping: §4 scopes record shape to the keys of a record, so
+	// an array of bare scalars is outside what this clause can govern
+	// and the exporter should know the subtest found nothing to check.
+	first, ok := records[0].(map[string]any)
+	if !ok {
+		t.Skipf("--format json records are not objects (first element is %T); §4 record shape governs a record's keys", records[0])
+	}
+	want := keyNames(first)
+
+	for i, rec := range records[1:] {
+		idx := i + 1
+		obj, ok := rec.(map[string]any)
+		if !ok {
+			t.Errorf("--format json record %d is %T, but record 0 is an object; one subcommand emits one record shape (CONTRACT.md §4, record shape)", idx, rec)
+			continue
+		}
+		got := keyNames(obj)
+		missing, extra := keyDiff(want, got)
+		if len(missing) == 0 && len(extra) == 0 {
+			continue
+		}
+		t.Errorf("--format json record %d does not carry the same top-level keys as record 0 "+
+			"(CONTRACT.md §4, record shape: a subcommand's key set is fixed, and an absent value is present and null):\n"+
+			"  absent from record %d: %s\n"+
+			"  only in record %d:     %s\n"+
+			"Fix by declaring the key set once and emitting null for what this record has no value for — "+
+			"not by having consumers test for the key.",
+			idx, idx, joinOrNone(missing), idx, joinOrNone(extra))
+	}
+}
+
+// keyNames returns obj's keys, sorted. Comparison is on the literal
+// key, not the normalized form used for CSV columns: two spellings of
+// one field within one codec is itself the defect.
+func keyNames(obj map[string]any) []string {
+	out := make([]string, 0, len(obj))
+	for k := range obj {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// keyDiff reports which of want's keys got lacks, and which of got's
+// keys want lacks.
+func keyDiff(want, got []string) (missing, extra []string) {
+	have := make(map[string]bool, len(got))
+	for _, k := range got {
+		have[k] = true
+	}
+	for _, k := range want {
+		if !have[k] {
+			missing = append(missing, k)
+		}
+	}
+	wanted := make(map[string]bool, len(want))
+	for _, k := range want {
+		wanted[k] = true
+	}
+	for _, k := range got {
+		if !wanted[k] {
+			extra = append(extra, k)
+		}
+	}
+	return missing, extra
+}
+
+// joinOrNone renders a key list for the diagnostic, so an empty side of
+// the diff reads as "(none)" rather than as a blank line.
+func joinOrNone(keys []string) string {
+	if len(keys) == 0 {
+		return "(none)"
+	}
+	return strings.Join(keys, ", ")
 }
 
 // csvColumnsExistInJSON asserts the machine-checkable half of §4's

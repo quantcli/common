@@ -133,6 +133,73 @@ func TestRunCrossCodec_EmptyResultChild(t *testing.T) {
 	})
 }
 
+// TestRunCrossCodec_FailsOnSparseKeySet is the adversarial half of the
+// record-shape subtest. The "sparse" dataset is the miniature of
+// withings `sleep`'s device-dependent `data{}`: two records, the
+// second omitting `deep_sec` rather than reporting it as null.
+//
+// Its CSV header is conforming, so this proves the two subtests are
+// independent — the failure comes from the key set, not from a column
+// the json codec lacks.
+func TestRunCrossCodec_FailsOnSparseKeySet(t *testing.T) {
+	if os.Getenv("COMPAT_PARITY_SPARSE_CHILD") == "1" {
+		parity.RunCrossCodec(t, compat.Runner{
+			Binary: buildStub(t),
+			Env:    []string{"STUBCLI_DATASET=sparse", "TZ=UTC"},
+		})
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRunCrossCodec_FailsOnSparseKeySet$", "-test.v")
+	cmd.Env = append(os.Environ(), "COMPAT_PARITY_SPARSE_CHILD=1")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("sparse key set passed the parity bundle; the record-shape assertion is not load-bearing:\n%s", output)
+	}
+	if _, ok := err.(*exec.ExitError); !ok {
+		t.Fatalf("could not run child test: %v", err)
+	}
+	for _, want := range []string{"deep_sec", "record shape", "record 1"} {
+		if !strings.Contains(string(output), want) {
+			t.Errorf("failure diagnostic does not mention %q:\n%s", want, output)
+		}
+	}
+	// The cross-codec subtest must still pass: the sparse dataset's
+	// header names only fields the json codec emits. If this fails, the
+	// two subtests are entangled and a key-set defect would be reported
+	// as an invented column.
+	if !strings.Contains(string(output), "PASS: TestRunCrossCodec_FailsOnSparseKeySet/CSVColumnsExistInJSON") {
+		t.Errorf("cross-codec subtest did not pass on the sparse dataset; the subtests are not independent:\n%s", output)
+	}
+}
+
+// TestRunCrossCodec_KeySetSubtestActuallyRuns guards the subtest
+// against quietly becoming a no-op. Every skip guard in
+// jsonKeySetIsUniform is reachable — an exporter with one record, no
+// csv writer, or SkipDataPath hits one — so a regression that made the
+// subtest skip unconditionally would leave every other test in this
+// file green. This asserts it reports PASS, not SKIP, against the
+// conforming two-record stub.
+func TestRunCrossCodec_KeySetSubtestActuallyRuns(t *testing.T) {
+	if os.Getenv("COMPAT_PARITY_RUNS_CHILD") == "1" {
+		parity.RunCrossCodec(t, compat.Runner{
+			Binary: buildStub(t),
+			Env:    []string{"STUBCLI_DATASET=parity", "TZ=UTC"},
+		})
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRunCrossCodec_KeySetSubtestActuallyRuns$", "-test.v")
+	cmd.Env = append(os.Environ(), "COMPAT_PARITY_RUNS_CHILD=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("conforming stub should pass, got %v:\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "PASS: TestRunCrossCodec_KeySetSubtestActuallyRuns/JSONKeySetIsUniform") {
+		t.Errorf("JSONKeySetIsUniform did not run against the conforming stub (skipped?):\n%s", output)
+	}
+}
+
 // TestRunCrossCodec_SkipDataPathGatesSubtest pins down that
 // Runner.SkipDataPath keeps the bundle adoptable by an exporter whose
 // data path needs credentials CI does not have — the same escape hatch
