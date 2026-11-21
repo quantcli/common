@@ -146,7 +146,7 @@ Scalar typing above pins down a field's JSON *type*. It does not say what the nu
 
 1. Add the missing top-level field or unit-named sibling to `json`. Additive, `minor` per §9. For withings `sleep` this alone closes the parity gap.
 2. Document the mapping in `prime` where the shapes genuinely cannot converge.
-3. Rename or remove an emitted key only in a `major`, with a deprecation window and a CHANGELOG entry (§9).
+3. Rename or remove an emitted key only in a `major`, under [§9's wire-surface rules](#the-wire-surface) — release notes always, and a deprecation window unless the exporter has evidenced no consumer.
 
 Reshaping or dropping a **declared** field to reach parity is explicitly not preferred: it breaks every consumer reading it today to solve a problem an additive sibling already solves.
 
@@ -236,12 +236,24 @@ Every case above is a **flag**. The record a subcommand emits is a surface too, 
 | make a key that was previously omitted always present ([§4 record shape](#record-shape)) | `minor` |
 | rename or remove a `json` key | `major` |
 | move a declared field between nesting levels (flatten or re-nest) | `major` |
+| change the top-level container of a subcommand's output (object ↔ array) | `major`, window impossible |
 | replace a raw upstream passthrough with declared fields, no data loss ([§4 posture](#units-and-cross-codec-parity)) | `major` |
 | change an existing field's unit under the same key | **not permitted** — see below |
 
-A `major` here carries the same obligations as a renamed flag: a deprecation window in which both the old and new spellings are emitted, and a CHANGELOG entry naming the old path and the new one. CSV columns follow the `json` field they project — a column's bump is its field's bump. Dropping a column while its `json` field stays is a `minor`, because §4 lets `csv` omit.
+CSV columns follow the `json` field they project — a column's bump is its field's bump. Dropping a column while its `json` field stays is a `minor`, because §4 lets `csv` omit.
 
-**A unit change is performed as a rename, never in place.** Because §4 puts the unit in the key name, seconds → minutes *is* `duration_sec` → `duration_min`: a rename, a `major`, and a missing key the first time a consumer runs it. Changing the number under a key that keeps its name is the only change on this list that no version number protects against — the output still parses, every arithmetic result is silently wrong by a constant factor, and a consumer who did not read the CHANGELOG has no way to find out. So it is not a `major`; it is not done. For a field grandfathered under a bare name (§4), the unit documented in `prime` is thereby fixed: if it is wrong, add a unit-named sibling and deprecate the bare field rather than redefining what the bare field means.
+**Every `major` on this list carries release notes** naming the old path and the new one, per change, as a table. Hand-written GitHub release notes are the family's mechanism and are sufficient; no repo keeps a `CHANGELOG.md` and this clause does not ask for one. (If files are ever wanted they are a separate change to this section, not an obligation inherited from it.)
+
+**A deprecation window — both spellings emitted for a release — is REQUIRED where the exporter has a known consumer.** Note this is a *new* obligation, not one inherited from the flag rules above: §9's flag cases carry no window today, only a bump. The asymmetry is deliberate rather than an oversight. A removed flag fails loudly and immediately on the next invocation, and the caller is usually a person who can read the error; a renamed `json` key fails inside a `jq` pipeline or an agent's tool-call, where the consumer is a program and the symptom is a missing value rather than a message. Whether the flag cases should grow the same window is a real question and not one this clause answers — it is scoped to the wire surface.
+
+Two carve-outs, each of which must be *stated with its evidence* in the PR and repeated in the release notes:
+
+- **No known consumer.** Where the repo has no stars, forks, watchers beyond the maintainers, and no third-party-authored issues, a `major` MAY replace the old spellings directly. The PR states those numbers as of that day. The carve-out is about evidence, not convenience: it turns "nobody is reading this" into a recorded, checkable claim that a reviewer can re-run, and it expires the moment the numbers change.
+- **A window is physically impossible.** One document cannot be both an object and an array, so the container-change row above cannot emit both spellings at once. State that, and carry the before/after shape in the release notes instead.
+
+Nothing here lets a popular exporter skip the window. The two carve-outs are narrow and independent: an impossible window does not imply no consumers, and no consumers does not make a window impossible.
+
+**A unit change is performed as a rename, never in place.** Because §4 puts the unit in the key name, seconds → minutes *is* `duration_sec` → `duration_min`: a rename, a `major`, and a missing key the first time a consumer runs it. Changing the number under a key that keeps its name is the only change on this list that no version number protects against — the output still parses, every arithmetic result is silently wrong by a constant factor, and a consumer who did not read the release notes has no way to find out. So it is not a `major`; it is not done. For a field grandfathered under a bare name (§4), the unit documented in `prime` is thereby fixed: if it is wrong, add a unit-named sibling and deprecate the bare field rather than redefining what the bare field means.
 
 ---
 
