@@ -261,10 +261,19 @@ func Check(api API, cfg *Config, now time.Time) ([]Result, error) {
 
 	// An exemption for a repo that no longer exists is config rot, not an
 	// exposure: warn so it gets cleaned up, but do not go red over it.
+	//
+	// The wording has to track what the sweep can actually prove. When the
+	// scope is unverified the repo may exist and simply be invisible to this
+	// token — which is the live case for a private exempt repo under a
+	// repo-scoped GITHUB_TOKEN — so claiming it is "not present in the org"
+	// would be the same unprovable assertion this row exists to avoid.
+	absentDetail := "listed as exempt but not present in the org"
+	if results[0].Verdict != Pass {
+		absentDetail = "listed as exempt but not visible to this sweep; it may exist and be outside this token's scope"
+	}
 	for _, e := range cfg.Exempt {
 		if !seen[e.Repo] {
-			results = append(results, Result{e.Repo, Warn, ReasonExemptUnknown,
-				"listed as exempt but not present in the org", ""})
+			results = append(results, Result{e.Repo, Warn, ReasonExemptUnknown, absentDetail, ""})
 		}
 	}
 

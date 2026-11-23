@@ -409,6 +409,19 @@ func TestCheckDisclosesUnverifiablePrivateScope(t *testing.T) {
 	if !disclosed {
 		t.Fatalf("expected a %s warn row disclosing the scope, got %+v", ReasonCoverageUnver, results)
 	}
+	// An exempt repo that is merely invisible must not be described as absent
+	// from the org — that is the same unprovable claim in miniature.
+	cfg := testConfig()
+	cfg.Exempt = []Exemption{{Repo: "private-notes", Reason: "no dependency manifest"}}
+	scoped, err := Check(api, cfg, now)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	for _, r := range scoped {
+		if r.Reason == ReasonExemptUnknown && strings.Contains(r.Detail, "not present in the org") {
+			t.Errorf("unverified scope must not assert the repo is absent: %s", r.Detail)
+		}
+	}
 	// The closing sentence must point at the scope row rather than assert
 	// coverage it cannot demonstrate.
 	report := Report(testConfig(), results, now)
