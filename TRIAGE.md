@@ -12,16 +12,16 @@ It exists so that reporters know what to expect, and so that the four repos beha
 ## Scope and posture
 
 - **Public-by-default.** Every comment, label, and reply on these repos is public. Security-sensitive reports are an exception — see [SECURITY.md](SECURITY.md).
-- **Standards-body voice.** Replies stay neutral and technical. We don't advocate for one upstream over another, and we don't critique competing tools or formats.
+- **Clear, neutral replies.** Replies stay neutral and technical. We don't advocate for one upstream over another, and we don't critique competing tools or formats.
 - **Reporter first.** First reply acknowledges the human and names a concrete next step. Diagnosis comes second.
 
 ## Priority buckets
 
-Triage assigns one of four priorities. Priority drives the SLA in the next section.
+Triage assigns one of four priorities based on user impact. Working authentication, correct exports, reliable releases, understandable commands and docs, and reported user problems take priority over speculative hardening. Priority drives the SLA in the next section.
 
 | Label | Meaning | Examples |
 |---|---|---|
-| `priority:critical` | Security, data loss, or a contract violation that breaks every conformant CLI. Block a release. | RCE in `prime`, supply-chain compromise, `--format json` emitting non-JSON across all three exporters. |
+| `priority:critical` | Actual compromise, exposed credentials, a credible exploitable security defect with material user impact, severe data loss, or a contract violation that breaks every conformant CLI. Block an affected release. | Leaked tokens, exploitable RCE in a shipped path, supply-chain compromise, `--format json` emitting non-JSON across all three exporters. |
 | `priority:high` | Reproducible bug that breaks a documented contract surface on at least one CLI, or a regression on `main`. | `--since 7d` returning wrong window; compat bundle failing on `main`. |
 | `priority:medium` | Reproducible bug or gap that has a workaround, or a well-scoped enhancement that's clearly in charter. | Confusing error text; missing `--types` validation; small docs additions. |
 | `priority:low` | Polish, cosmetic, "nice to have", or open-ended discussion with no immediate action. | Typos, wording, tracking ideas, design exploration. |
@@ -29,6 +29,10 @@ Triage assigns one of four priorities. Priority drives the SLA in the next secti
 Triage that flips a priority must say why in a comment. Silent re-prioritization is not allowed.
 
 Severity-vs-visibility check: a loud-but-cosmetic report is not automatically high. A quiet-but-blocking report is not automatically low. The priority reflects the actual impact, not the volume of the thread.
+
+A `kind:security` label does not set priority. Before starting security work, briefly name the user asset, plausible failure or attack path, concrete consequence, and smallest useful remedy. Routine dependency updates and other hardening are ordinary maintenance, batched below product delivery. License compliance is separate from security severity. Missing checks, incomplete proofs, theoretical drift, and imperfect coverage claims are not themselves vulnerabilities.
+
+For scope limits, record accepted residual risk briefly and stop. Do not generate recursive follow-up tasks or repeatedly notify DT about unchanged warnings. New security infrastructure requires an explicit owner decision under [SECURITY.md](SECURITY.md#owner-direction-proportionate-security-2026-11-23).
 
 ## Time-to-first-touch SLA
 
@@ -86,7 +90,7 @@ The four repos share one label vocabulary. Adding, renaming, or removing labels 
 | `kind:question` | Usage / "how do I" — often resolves to a docs gap. |
 | `kind:docs` | Docs-only change (`README.md`, `CONTRIBUTING.md`, `CONTRACT.md` prose, `prime` text). |
 | `kind:discussion` | Open-ended; no specific action expected. |
-| `kind:security` | Security-sensitive. Re-route privately per [SECURITY.md](SECURITY.md) **before** further public comment. |
+| `kind:security` | Security work; priority depends on credible exploitability and user harm. Route sensitive reports privately per [SECURITY.md](SECURITY.md). Routine public maintenance can stay public. |
 
 ### `area:*` — which surface
 
@@ -128,7 +132,7 @@ Triage routes by `kind` + `area`, not by name:
 - `kind:bug` + `area:contract` / `area:compat` → Lead Go Engineer.
 - `kind:bug` + `area:{service}` on an exporter repo → that exporter's maintainer (today: Lead Go Engineer).
 - `kind:enhancement` touching `CONTRACT.md` → Integration & Standards.
-- `kind:security` → re-route privately per [SECURITY.md](SECURITY.md). Do not discuss publicly until the responsible disclosure window closes.
+- `kind:security` → assess user impact under [SECURITY.md](SECURITY.md). Re-route sensitive reports privately before discussing exploit details; routine hardening and dependency maintenance can remain public.
 - `kind:question` or `kind:docs` → first-touch reply from Community Manager; file a `kind:docs` follow-up against Documentation & Education if the question signals a docs gap.
 - `kind:discussion` → leave open; revisit if it converges on a specific action.
 

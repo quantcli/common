@@ -2,6 +2,18 @@
 
 This document covers the [quantcli](https://github.com/quantcli) family of open-source CLIs: `common`, `crono-export-cli`, `liftoff-export-cli`, `withings-export-cli`, and any future `*-export-cli` that adopts the [contract](CONTRACT.md).
 
+## Owner direction: proportionate security (2026-11-23)
+
+This direction supersedes conflicting older security-prioritization, hardening, and follow-up instructions. Quantcli builds small local personal-data export CLIs. Working authentication, correct exports, reliable releases, understandable commands and docs, and reported user problems take priority over speculative security infrastructure.
+
+Protect credentials and private health data with straightforward established mechanisms: avoid token and data leakage, retain TLS verification, use sensible credential-file permissions, and fix credible exploitable dependencies. Before starting security work, briefly identify the affected user asset, plausible failure or attack path, concrete consequence, and smallest useful remedy. Missing checks, imperfect coverage claims, theoretical drift, and incomplete proofs are not themselves vulnerabilities.
+
+Urgent security work requires actual compromise, exposed credentials, or a credible exploitable defect with material user impact. Other hardening and routine dependency updates are ordinary maintenance: batch them and keep them subordinate to product delivery. Licensing and compliance are separate considerations, not automatic security emergencies.
+
+New scanners, custom workflow parsers, cross-repository monitors, monitoring of monitors, broader credentials, and additional recurring security automations require an explicit owner decision before implementation. Do not create follow-up tasks merely because residual risk exists. Record accepted limitations briefly and stop; accepted residual risk is a valid completed outcome. Do not repeatedly notify DT about unchanged warnings.
+
+Existing deployed checks stay enabled pending owner approval of specific operational changes. Preserve credential protections, branch protection, and independent review. The owner or an explicitly delegated maintainer makes final merge and release decisions.
+
 ## Reporting a vulnerability
 
 **Please do not open a public GitHub issue for security reports.** Public issue threads are searchable from the day they are filed; we'd rather give the project a chance to ship a fix before the issue is widely known.
@@ -9,7 +21,7 @@ This document covers the [quantcli](https://github.com/quantcli) family of open-
 Report security issues privately via:
 
 - GitHub's private vulnerability reporting at <https://github.com/quantcli/common/security/advisories/new>, or
-- Email to `security@quantcli.org` (PGP key forthcoming).
+- Email to `security@quantcli.org`.
 
 Include:
 
@@ -36,17 +48,15 @@ We coordinate disclosure with the reporter. Default disclosure timeline is **90 
 
 We patch the **latest minor release of each CLI** on its `main` branch. Older releases are not patched; users on older versions should upgrade.
 
-`quantcli/common` defines the contract; it is patched on `main`. If a change to the contract is required to resolve a vulnerability, it follows the contract-change flow described in [CONTRIBUTING.md](CONTRIBUTING.md), with the security review fast-tracked.
+`quantcli/common` defines the contract; it is patched on `main`. If a change to the contract is required to resolve a vulnerability, it follows the contract-change flow described in [CONTRIBUTING.md](CONTRIBUTING.md), with review expedited when the impact warrants urgency.
 
 ## Supply-chain policy
 
-Every PR — in `common` and in every `*-export-cli` — is gated on a CI workflow that runs three checks:
+The deployed [`security.yml`](.github/workflows/security.yml) runs `govulncheck`, `osv-scanner`, and a license-policy check on pushes to `main`, PRs targeting `main`, manual dispatch, and nominally daily at **06:17 UTC**. The exporters carry copies; pending trigger corrections are reviewed separately. These jobs report CI results; the required branch-protection gate in `common` is currently `Code owner approval`, not three separately required scanner contexts.
 
-- `govulncheck` against the Go vulnerability database.
-- `osv-scanner` for transitive vulnerabilities across the OSV database.
-- A license-policy check that allowlists only permissive licenses.
+Both vulnerability scanners inspect Go dependencies, so their coverage overlaps. `govulncheck` analyzes Go code and reports reachable vulnerabilities; OSV scans dependency manifests across its database. The workflow discovers Go modules excluding `.git`, `vendor`, and `testdata`, and fails if none are found. Neither a green result nor the presence of a workflow proves complete coverage of shipped artifacts. A red result needs assessment: it can be a scanner or toolchain failure, license-policy failure, or advisory requiring an exploitability check.
 
-The same checks re-run on a daily schedule (06:17 UTC) on each repo's default branch, so an advisory published against a dependency we already ship is caught within a day rather than waiting for the next PR. That daily schedule is itself monitored — see [Scan freshness monitoring](#scan-freshness-monitoring) below.
+The license allowlist below remains enforced by the existing workflow. A license failure can block that workflow without being a security vulnerability.
 
 **License allowlist** (SPDX identifiers, sorted by SPDX id; must match `ALLOWED_LICENSES` in `.github/workflows/security.yml` exactly):
 
@@ -71,41 +81,18 @@ A PR that introduces a denied license is blocked. To request an exception, open 
 
 ### Scan freshness monitoring
 
-A daily scan is only a control while it is actually running. GitHub **disables scheduled workflows in a public repository after 60 days with no repository activity**, and announces that by email rather than by failing anything — so the daily re-scan above would switch itself off in exactly the case it exists for (a quiet repo), while the Actions tab kept showing green, because the last run that ever happened was green.
+The deployed [`.github/workflows/scan-freshness.yml`](.github/workflows/scan-freshness.yml) runs in `common`, nominally daily at **07:42 UTC**, on manual dispatch, and on PRs touching its checker or configuration. It uses [`tools/scanfreshness`](tools/scanfreshness) to inspect public Actions metadata for repositories returned by org discovery. For non-exempt repos it checks for an active `security.yml` and that the latest completed, non-PR run on the default branch succeeded within **48 hours**. Exemptions with reasons are in [`.github/scan-freshness.json`](.github/scan-freshness.json); currently `.github` and `homebrew-tap` are exempt.
 
-`quantcli/common` therefore runs a watcher: [`.github/workflows/scan-freshness.yml`](.github/workflows/scan-freshness.yml), nominally daily at **07:42 UTC**, 85 minutes after the scan cron (but see the caveat on scheduler lag below — that gap is not an ordering guarantee). Unlike `security.yml` it is **not** copied into the export-clis — one watcher sweeps the whole org. It enumerates every repo in the `quantcli` organisation and requires each one to have:
+The checker reports `stale`, `workflow-disabled`, `workflow-missing`, `no-completed-run`, `scan-red`, or `unreadable`. These describe workflow status, not confirmed vulnerabilities. On a failed scheduled run, the alert job rechecks and opens or comments on an issue titled **"Security scan freshness check failed"** if failure persists. That existing automation can repeat comments; this policy change does not alter it. Maintainers should assess the underlying finding and avoid additional repeated notifications to DT about unchanged warnings.
 
-- a `security.yml` workflow that is in state `active` (not disabled, by GitHub or by hand), and
-- a **successful** completed run of it on the default branch within the **freshness window of 48 hours** — wide enough to absorb one missed daily run, tight enough that two consecutive misses are loud.
+GitHub schedules are best effort and can be delayed or disabled after inactivity. The watcher is also scheduled, and it neither monitors itself nor proves that org discovery returned every repo or that scans covered every shipped artifact. These are accepted scope limits, not instructions to add another watcher, expand credentials, or build a parser. A concise truthful description is sufficient unless concrete uncovered shipped code and material impact are established.
 
-**The window is the contract, not the cron times.** GitHub Actions runs `schedule` triggers on a best-effort basis, and in this org the lag is large and routine: measured on 2026-11-18 against our one long-lived cron (194 scheduled runs, nominal `0 14 * * *`), GitHub started it **4.4–9.2 hours late on each of the previous 12 days, mean ~6.6h, never once on time**. A scan nominally due at 06:17 UTC may genuinely not start until mid-afternoon, and the 07:42 watcher may run before, between, or after the scans it is judging. Two consequences worth knowing before anyone reports a bug:
+## Proposed sustainable baseline — owner decision required
 
-- **"No scheduled run yet by late morning" is not a defect.** Compare against the 48h window, not against the clock. The window is deliberately double the cadence so a judgement landing mid-queue still sees the previous day's successful scan.
-- **Do not tighten the window to 24h** without re-measuring the lag. At 24h this check would flap on scheduler jitter alone, and a detection control that cries wolf daily gets muted — strictly worse than not having one.
+Keep credential and private-data protections, TLS verification, sensible credential-file permissions, branch protection, independent review, and genuine dependency fixes. Use existing PR checks and a simple periodic dependency review; batch routine findings with maintenance.
 
-Anything else is a red build, with a reason code:
+For a simpler operational baseline, prefer `govulncheck` for Go vulnerabilities and assess whether OSV contributes useful findings beyond that overlap. Consider a weekly scheduled vulnerability scan instead of daily duplicate scans, and license checks when dependencies change. Assess whether the existing freshness watcher provides enough benefit to retain. These are proposals for the owner's decision, not approved changes: current scanners, daily schedules, license checks, and the watcher remain enabled until specific operational changes are approved.
 
-| Reason | Meaning | How to clear it |
-|---|---|---|
-| `stale` | The newest completed run on the default branch is older than the window. | Re-run `security.yml` in that repo; if the cron was auto-disabled, re-enable it and push something. |
-| `workflow-disabled` | `security.yml` exists but is not `active` — this is the 60-day auto-disable, or a manual one. | Re-enable it from the repo's Actions tab, then dispatch a run. |
-| `workflow-missing` | The repo has no `security.yml` at all — a new repo nobody wired up, or a deleted/renamed file. | Copy the workflow from `common` (see [CONTRIBUTING.md](CONTRIBUTING.md)), or add an exemption with a reason. |
-| `no-completed-run` | The workflow exists but has never finished a run on the default branch. | Dispatch one. |
-| `scan-red` | The scan is running on schedule but its latest verdict is a failure. Coverage is fine; the repo is not clean. | Triage the finding per [TRIAGE.md](TRIAGE.md). |
-| `unreadable` | The repo's Actions metadata could not be read. An unreadable repo is treated as an unscanned repo rather than silently skipped. | Check token scope and repo visibility. |
+Signed releases, SBOM publication, a formal threat-model document, penetration testing, drift monitoring, and additional security automation are not standing commitments or automatic follow-up work. Reconsider them only for a concrete user benefit and with owner approval where new infrastructure is involved.
 
-**Alerting path.** The watcher's job goes red, and on scheduled runs it also opens — or comments on, if one is already open — a GitHub issue in `quantcli/common` titled **"Security scan freshness check failed"**, carrying the per-repo table. The issue exists because a failing *scheduled* workflow only emails the account that last touched the cron, which is a notification nobody reliably reads; an open issue in the org's main repo is visible to everyone watching it. The issue reports scan **coverage** only — repo names, reason codes, run links — never vulnerability details.
-
-**Exemptions** live in [`.github/scan-freshness.json`](.github/scan-freshness.json) and each carries a written reason. Discovery is org-wide and opt-out, not an allowlist, so a newly created repo is covered the day it appears unless somebody argues in a PR for why it should not be.
-
-**Residual risk, stated plainly:** the watcher is itself a scheduled workflow in a public repo, so it is subject to the same 60-day rule it exists to catch, and nothing watches the watcher. The mitigation is that `common` is the org's most active repo — 60 days of total silence there would be its own alarm — plus GitHub's warning email before a cron is disabled. A second, independent watcher outside GitHub Actions would close this; it is not worth the machinery at the current size.
-
-To prove the check can still go red, run it from the Actions tab with the `max-age-hours` input set to `0.01`: every non-exempt repo should report `stale`.
-
-## What's not in this policy yet
-
-- **Signed releases / SBOM publishing.** Useful next steps; tracked as separate follow-up tickets, not yet shipped.
-- **Threat model write-up.** The product surface is intentionally small (local CLIs, user owns their tokens), so a full threat model is premature. We will publish one if the surface grows materially.
-- **Pen test.** Not commissioned for the current product surface.
-
-If the policy itself needs to change — to add a category of scan, to adjust the allowlist, to revise the disclosure timeline — open a PR against this file in `quantcli/common`. Policy changes ripple across every export-cli and are reviewed accordingly.
+Policy changes are reviewed through a PR in `quantcli/common`; operational changes need the specific owner decision described above. The owner or an explicitly delegated maintainer makes final merge and release decisions.
