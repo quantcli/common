@@ -168,6 +168,19 @@ func (a *httpAPI) ListRepos(org string) ([]Repo, error) {
 	return nil, errors.New("org repo listing did not terminate within 10 pages")
 }
 
+// OrgRepoCounts reads the org's own repository tally. `public_repos` is
+// returned to any caller; `total_private_repos` only to one with organisation
+// read scope, and is absent otherwise — which CoverageScope treats as
+// "unknown" rather than zero.
+func (a *httpAPI) OrgRepoCounts(org string) (OrgCounts, error) {
+	var out OrgCounts
+	path := fmt.Sprintf("/orgs/%s", url.PathEscape(org))
+	if err := a.get(path, &out); err != nil {
+		return OrgCounts{}, err
+	}
+	return out, nil
+}
+
 func (a *httpAPI) ListWorkflows(org, repo string) ([]Workflow, error) {
 	var out struct {
 		Workflows []Workflow `json:"workflows"`

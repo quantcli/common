@@ -8,6 +8,10 @@
       "reason": "Org profile and community-health files only. No code, no dependency manifest, nothing for govulncheck or osv-scanner to read."
     },
     {
+      "repo": "brag",
+      "reason": "Private notes repo: three markdown files, a dated log, and one shell script. Verified 2026-11-23 to contain no dependency manifest of any ecosystem, so govulncheck and osv-scanner have nothing to read. Drop this exemption if it ever gains one."
+    },
+    {
       "repo": "homebrew-tap",
       "reason": "Generated Homebrew formulae that point at release artefacts built and scanned in the export-cli repos. The tap has no dependency tree of its own; scanning it would re-check nothing."
     }

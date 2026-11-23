@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,8 @@ var now = time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC)
 type fakeAPI struct {
 	repos     []Repo
 	reposErr  error
+	counts    *OrgCounts
+	countsErr error
 	workflows map[string][]Workflow
 	wfErr     map[string]error
 	runs      map[string]*Run
@@ -25,6 +28,39 @@ type fakeAPI struct {
 }
 
 func (f *fakeAPI) ListRepos(string) ([]Repo, error) { return f.repos, f.reposErr }
+
+// OrgRepoCounts defaults to agreeing exactly with ListRepos, so the coverage
+// row passes and each test exercises only the behaviour it is named for. Tests
+// about coverage set counts/countsErr explicitly.
+func (f *fakeAPI) OrgRepoCounts(string) (OrgCounts, error) {
+	if f.countsErr != nil {
+		return OrgCounts{}, f.countsErr
+	}
+	if f.counts != nil {
+		return *f.counts, nil
+	}
+	pub, priv := 0, 0
+	for _, r := range f.repos {
+		if r.Private {
+			priv++
+		} else {
+			pub++
+		}
+	}
+	return OrgCounts{PublicRepos: pub, TotalPrivate: &priv}, nil
+}
+
+// repoRows drops the synthetic coverage row so a test can assert on the
+// per-repo verdicts it is actually about.
+func repoRows(results []Result) []Result {
+	var out []Result
+	for _, r := range results {
+		if r.Repo != coverageRow {
+			out = append(out, r)
+		}
+	}
+	return out
+}
 
 func (f *fakeAPI) ListWorkflows(_, repo string) ([]Workflow, error) {
 	if err := f.wfErr[repo]; err != nil {
@@ -246,10 +282,11 @@ func TestCheck(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			results, err := Check(tc.api, tc.cfg, now)
+			all, err := Check(tc.api, tc.cfg, now)
 			if err != nil {
 				t.Fatalf("Check returned error: %v", err)
 			}
+			results := repoRows(all)
 			if len(results) != 1 {
 				t.Fatalf("got %d results, want 1: %+v", len(results), results)
 			}
@@ -287,6 +324,139 @@ func TestCheckCoversNewReposByDefault(t *testing.T) {
 	failures := Failures(results)
 	if len(failures) != 1 || failures[0].Repo != "brand-new-export-cli" || failures[0].Reason != ReasonWorkflowGone {
 		t.Fatalf("expected brand-new-export-cli to fail as workflow-missing, got %+v", failures)
+	}
+}
+
+// The regression this encodes was observed in production on 2026-11-23.
+//
+// `/orgs/{org}/repos` is filtered by what the token may see. The scheduled
+// run's repo-scoped GITHUB_TOKEN enumerated 6 of quantcli's 7 repos — the
+// invisible one being a private repo created three days earlier with no
+// security.yml — and the report's closing line read "All non-exempt repos have
+// a successful run inside the window". Three consecutive scheduled runs were
+// green while a repo in the org was never scanned, and nothing in the output
+// distinguished that from genuine org-wide coverage.
+//
+// A repo the watcher cannot see is exactly the silent-coverage failure the
+// watcher exists to remove, so a provable shortfall must go red.
+func TestCheckFailsWhenSweepCannotSeeEveryRepo(t *testing.T) {
+	// The org reports one private repo; the sweep enumerated none.
+	onePrivate := 1
+	api := &fakeAPI{
+		repos:     []Repo{repo("common")},
+		counts:    &OrgCounts{PublicRepos: 1, TotalPrivate: &onePrivate},
+		workflows: map[string][]Workflow{"common": securityWorkflow("active")},
+		runs:      map[string]*Run{"common": runAt(now.Add(-1*time.Hour), "success")},
+	}
+	results, err := Check(api, testConfig(), now)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	failures := Failures(results)
+	if len(failures) != 1 || failures[0].Reason != ReasonCoverageShort {
+		t.Fatalf("a sweep that saw 0 of 1 private repos must fail %s, got %+v",
+			ReasonCoverageShort, failures)
+	}
+	// And the green sentence must not appear when coverage is short.
+	if report := Report(testConfig(), results, now); strings.Contains(report, "inside the window — see") {
+		t.Errorf("report claimed clean coverage despite a coverage failure:\n%s", report)
+	}
+}
+
+// A missed public repo is always provable, because public_repos is readable by
+// any caller. Pagination bugs and permission oddities both land here.
+func TestCheckFailsOnMissedPublicRepo(t *testing.T) {
+	api := &fakeAPI{
+		repos:     []Repo{repo("common")},
+		counts:    &OrgCounts{PublicRepos: 4},
+		workflows: map[string][]Workflow{"common": securityWorkflow("active")},
+		runs:      map[string]*Run{"common": runAt(now.Add(-1*time.Hour), "success")},
+	}
+	results, err := Check(api, testConfig(), now)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	failures := Failures(results)
+	if len(failures) != 1 || failures[0].Reason != ReasonCoverageShort {
+		t.Fatalf("a sweep that saw 1 of 4 public repos must fail %s, got %+v",
+			ReasonCoverageShort, failures)
+	}
+}
+
+// Without org read scope the private count is absent. That is not provably a
+// gap, so it must not go red every run — a row that always fails gets muted,
+// and then the real failure is invisible too. But it must not be reported as
+// full coverage either: the sweep says what it could and could not see.
+func TestCheckDisclosesUnverifiablePrivateScope(t *testing.T) {
+	api := &fakeAPI{
+		repos:     []Repo{repo("common")},
+		counts:    &OrgCounts{PublicRepos: 1, TotalPrivate: nil},
+		workflows: map[string][]Workflow{"common": securityWorkflow("active")},
+		runs:      map[string]*Run{"common": runAt(now.Add(-1*time.Hour), "success")},
+	}
+	results, err := Check(api, testConfig(), now)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if n := len(Failures(results)); n != 0 {
+		t.Errorf("an unreadable private count is unknown, not a proven gap; want 0 failures, got %d", n)
+	}
+	var disclosed bool
+	for _, r := range results {
+		if r.Repo == coverageRow && r.Verdict == Warn && r.Reason == ReasonCoverageUnver {
+			disclosed = true
+		}
+	}
+	if !disclosed {
+		t.Fatalf("expected a %s warn row disclosing the scope, got %+v", ReasonCoverageUnver, results)
+	}
+	// An exempt repo that is merely invisible must not be described as absent
+	// from the org — that is the same unprovable claim in miniature.
+	cfg := testConfig()
+	cfg.Exempt = []Exemption{{Repo: "private-notes", Reason: "no dependency manifest"}}
+	scoped, err := Check(api, cfg, now)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	for _, r := range scoped {
+		if r.Reason == ReasonExemptUnknown && strings.Contains(r.Detail, "not present in the org") {
+			t.Errorf("unverified scope must not assert the repo is absent: %s", r.Detail)
+		}
+	}
+	// The closing sentence must point at the scope row rather than assert
+	// coverage it cannot demonstrate.
+	report := Report(testConfig(), results, now)
+	if strings.Contains(report, "All non-exempt repos have") {
+		t.Errorf("report still makes the unqualified org-wide claim:\n%s", report)
+	}
+	if !strings.Contains(report, coverageRow) {
+		t.Errorf("report does not surface the coverage row:\n%s", report)
+	}
+}
+
+// If the org endpoint itself cannot be read, the sweep has no way to check its
+// own reach, so it fails rather than guessing.
+func TestCheckFailsWhenOrgTallyUnreadable(t *testing.T) {
+	api := &fakeAPI{
+		repos:     []Repo{repo("common")},
+		countsErr: errors.New("403 Forbidden"),
+		workflows: map[string][]Workflow{"common": securityWorkflow("active")},
+		runs:      map[string]*Run{"common": runAt(now.Add(-1*time.Hour), "success")},
+	}
+	results, err := Check(api, testConfig(), now)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	failures := Failures(results)
+	if len(failures) != 1 || failures[0].Reason != ReasonCoverageShort {
+		t.Fatalf("want %s when the org tally is unreadable, got %+v", ReasonCoverageShort, failures)
+	}
+	// The failure detail is published into a public issue; it carries the
+	// status line only, never the credential that failed.
+	for _, forbidden := range []string{"Bearer", "Authorization"} {
+		if strings.Contains(failures[0].Detail, forbidden) {
+			t.Errorf("coverage failure detail leaked %q: %s", forbidden, failures[0].Detail)
+		}
 	}
 }
 
@@ -454,6 +624,47 @@ func TestShippedPolicyFileIsValid(t *testing.T) {
 	for _, e := range cfg.Exempt {
 		if strings.HasSuffix(e.Repo, "-export-cli") || e.Repo == "common" {
 			t.Errorf("%s is a code repo and must not be exempt from scanning", e.Repo)
+		}
+	}
+}
+
+// The reason codes are a runbook contract, not internal strings: they are
+// printed in the report and carried into the alert issue, and SECURITY.md is
+// where the operator who reads that alert looks them up. This pins that
+// contract.
+//
+// It is here because the gap was invisible until it wasn't. `exempt-entry-
+// unknown` shipped undocumented and sat dormant, then exempting a private repo
+// made it fire on every scheduled run — a code in every report with no entry to
+// look up. The codes are read out of the source rather than restated here, so a
+// new one without a runbook row fails this test instead of quietly passing it.
+func TestEveryReasonCodeHasARunbookEntry(t *testing.T) {
+	src, err := os.ReadFile("check.go")
+	if err != nil {
+		t.Fatalf("read check.go: %v", err)
+	}
+	codes := regexp.MustCompile(`(?m)^\tReason\w+\s*=\s*"([^"]+)"`).FindAllStringSubmatch(string(src), -1)
+	// A pattern that silently matches nothing would make this test vacuously
+	// green, which is the exact failure shape it exists to catch.
+	if len(codes) < 10 {
+		t.Fatalf("matched %d reason codes in check.go, want at least 10: the pattern has drifted from the const block", len(codes))
+	}
+
+	// A passing or skipped repo gives the operator nothing to clear, so those
+	// codes need no row. Everything that fails a build or qualifies a coverage
+	// claim must be documented.
+	noRunbookNeeded := map[string]bool{ReasonFresh: true, ReasonExempt: true, ReasonArchived: true}
+
+	doc, err := os.ReadFile(filepath.Join("..", "..", "SECURITY.md"))
+	if err != nil {
+		t.Fatalf("read SECURITY.md: %v", err)
+	}
+	for _, m := range codes {
+		if noRunbookNeeded[m[1]] {
+			continue
+		}
+		if !strings.Contains(string(doc), "`"+m[1]+"`") {
+			t.Errorf("reason code %q is emitted but absent from SECURITY.md; an operator who sees it in an alert has nowhere to look it up", m[1])
 		}
 	}
 }
