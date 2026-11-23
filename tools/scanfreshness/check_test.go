@@ -457,3 +457,86 @@ func TestShippedPolicyFileIsValid(t *testing.T) {
 		}
 	}
 }
+
+// Regression for the stale-read bug found in production on 2026-11-18.
+//
+// The checker used to ask the API for `status=completed` and take the first
+// row. Measured against withings-export-cli that day, a scheduled run which
+// self-reported `"status": "completed", "conclusion": "success"` was omitted
+// from the response whenever `status=completed` was passed, while the
+// unfiltered query returned it first. The checker therefore read a last-scan
+// time ~22h older than the truth, which over-reports age and would have fired
+// a false `stale` alert once the real gap crossed the window.
+//
+// The fix filters on status client-side, so these cases pin the selection
+// rules against an unfiltered page exactly as the API returns it.
+func TestSelectLatestRun(t *testing.T) {
+	completed := func(id int64, event, status string) Run {
+		return Run{ID: id, Event: event, Status: status, Conclusion: "success"}
+	}
+
+	tests := []struct {
+		name   string
+		runs   []Run
+		wantID int64 // expected run ID, 0 means expect nil
+	}{
+		{
+			name:   "newest completed branch run wins",
+			runs:   []Run{completed(3, "schedule", "completed"), completed(2, "push", "completed")},
+			wantID: 3,
+		},
+		{
+			// The shape that caused the bug: an unfiltered page whose newest
+			// entry is the fresh scheduled run. The old code never saw it.
+			name: "fresh scheduled run is not skipped",
+			runs: []Run{
+				completed(44337479064, "schedule", "completed"),
+				completed(44144674797, "workflow_dispatch", "completed"),
+			},
+			wantID: 44337479064,
+		},
+		{
+			// Without the query filter, in-flight runs now appear in the page.
+			name: "in-progress and queued runs are skipped",
+			runs: []Run{
+				completed(5, "schedule", "in_progress"),
+				completed(4, "schedule", "queued"),
+				completed(3, "push", "completed"),
+			},
+			wantID: 3,
+		},
+		{
+			name: "pull request runs are still skipped",
+			runs: []Run{
+				completed(9, "pull_request", "completed"),
+				completed(8, "pull_request_target", "completed"),
+				completed(7, "schedule", "completed"),
+			},
+			wantID: 7,
+		},
+		{
+			name:   "nothing qualifying yields nil",
+			runs:   []Run{completed(2, "pull_request", "completed"), completed(1, "schedule", "in_progress")},
+			wantID: 0,
+		},
+		{name: "empty page yields nil", runs: nil, wantID: 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := selectLatestRun(tc.runs)
+			if tc.wantID == 0 {
+				if got != nil {
+					t.Fatalf("got run %d, want nil", got.ID)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("got nil, want run %d", tc.wantID)
+			}
+			if got.ID != tc.wantID {
+				t.Errorf("got run %d, want %d", got.ID, tc.wantID)
+			}
+		})
+	}
+}
