@@ -34,7 +34,7 @@ Branches are short-lived. Rebase on `main` rather than merging `main` back in. O
 - Body answers three questions: **What changed? Why? What does it imply for the per-service CLIs?** That third question is the one PR authors miss most often, and it's the one reviewers care about most.
 - Mark the PR as draft until CI is green.
 - Squash-merge by default. Use a merge commit only if the individual commits are independently meaningful (rare).
-- The Lead Go Engineer is the merge gate for this repo. Expect one round of review on most PRs.
+- The Lead Go Engineer coordinates technical review. Preserve branch protection and independent review; the owner or an explicitly delegated maintainer makes final merge and release decisions. Expect one round of review on most PRs.
 
 ## Proposing a contract change
 
@@ -96,33 +96,25 @@ The check exists because two consecutive PRs landed `CONTRACT §5:` quotes that 
 
 ## Supply-chain and security
 
-Every PR — here and in each `*-export-cli` — is gated on the `security` workflow defined in [`.github/workflows/security.yml`](.github/workflows/security.yml). It runs three checks:
+Follow the [owner direction on proportionate security](SECURITY.md#owner-direction-proportionate-security-2026-11-23). Product delivery and reported user problems come first. Keep straightforward credential and private-data protections, TLS verification, sensible credential-file permissions, and fixes for credible exploitable dependencies.
 
-- **`govulncheck`** — Go vulnerability database scan against the full dependency closure of every Go module in the repo. Modules are discovered by walking the tree, and finding none fails the job rather than skipping it.
-- **`osv-scanner`** — OSV transitive vulnerability scan over the working tree.
-- **License policy** — every direct + transitive Go dependency must resolve to one of the permissive SPDX ids listed in [`SECURITY.md`](SECURITY.md#supply-chain-policy). GPL-family, SSPL, BSL, and other non-permissive licenses are blocking.
+Before starting security work, briefly identify the user asset, plausible failure or attack path, concrete consequence, and smallest useful remedy. Urgency follows credible exploitation and material user harm. Batch routine dependency updates and hardening as ordinary maintenance. License compliance is a separate consideration, not an automatic security emergency.
 
-The same three checks also run **daily at 06:17 UTC** on each repo's default branch. A new advisory does not change our code, so PR and push triggers alone would never re-check a repo with no commit traffic — a quiet repo would stay silently vulnerable until somebody happened to open a PR. If a scheduled run goes red with no corresponding code change, a new advisory has landed against an existing dependency; triage it as described in [TRIAGE.md](TRIAGE.md).
+The deployed [`security.yml`](.github/workflows/security.yml) runs `govulncheck`, `osv-scanner`, and license-policy checks on pushes to `main`, PRs targeting `main`, manual dispatch, and daily at 06:17 UTC. Trigger corrections are reviewed separately. The scanners overlap on Go dependencies. A failed run needs assessment; it does not by itself establish an exploitable vulnerability. See [SECURITY.md](SECURITY.md#supply-chain-policy) for the current mechanics, license allowlist, and proposed simpler baseline. In `common`, the required branch-protection status is currently `Code owner approval`; scanner jobs are not separately required contexts.
 
-That daily schedule is itself watched. GitHub disables scheduled workflows in a public repo after 60 days with no repository activity, so the re-scan would quietly stop in exactly the quiet repos it protects. [`.github/workflows/scan-freshness.yml`](.github/workflows/scan-freshness.yml) in `common` sweeps the whole org daily and goes red if any repo's `security.yml` is disabled, missing, or has not completed a successful run on its default branch within 48 hours — see [SECURITY.md](SECURITY.md#scan-freshness-monitoring) for the reason codes and the alerting path. The checker it runs lives in [`tools/scanfreshness`](tools/scanfreshness); `tools` is a separate, standard-library-only Go module so nothing an export-cli imports can ever depend on it.
+The existing [`scan-freshness.yml`](.github/workflows/scan-freshness.yml) in `common` checks Actions metadata across discovered org repos, with documented exemptions and a 48-hour window. It does not prove complete org visibility or coverage of shipped code. See [its scope and alerting behavior](SECURITY.md#scan-freshness-monitoring). A concise truthful scope limit is a valid stopping point.
 
-If a PR fails the license-policy check, do not unblock it by adding a `replace` directive or vendoring a fork to relabel the license. Either drop the dependency, switch to a permissively licensed equivalent, or open an issue requesting a policy exception with the rationale.
+These deployed checks and schedules remain enabled until the owner approves specific operational changes. New scanners, custom workflow parsers, cross-repository monitors, monitoring of monitors, broader credentials, and additional recurring security automations require an explicit owner decision before implementation. Do not create follow-up tasks merely because residual risk remains; record accepted limitations briefly and stop. Avoid repeated notifications to DT about unchanged warnings.
 
-To propose a security policy change (allowlist, severity bar, or workflow tooling), open an issue here first — these decisions ripple to every export-cli.
+If a PR fails the license-policy check, do not unblock it by adding a `replace` directive or vendoring a fork to relabel the license. Drop the dependency, switch to a compatible alternative, or request a policy exception with the rationale.
 
-### Where the workflow lives, and when to centralize it
+### Shared workflow maintenance
 
-The `security` workflow is **copied verbatim** into every repo that runs it (`quantcli/common` plus each `*-export-cli`). `quantcli/common` is the source of truth; the `# security.yml v3 — source of truth: quantcli/common` marker at the top of each copy is the version key. When you change the workflow in `common`, propagate the change (and bump the version) to every repo that runs it. A future drift-check job will key off that marker.
+`common` is the source for the `security.yml` copies used by exporters. The `# security.yml v3` header is a version marker, not an enforced drift check. The header's documentation pointer differs between `common` and exporter copies. For an approved shared workflow fix, check existing work and update affected copies together with a concise explanation of the benefit. Review toolchain-selection and propagation work for actual benefit before extending it.
 
-One line is expected to differ between copies: the header's pointer to this document is relative in `common` (`CONTRIBUTING.md`) and qualified in the export-clis (`quantcli/common CONTRIBUTING.md`). Everything else should match byte for byte.
+`scan-freshness.yml` lives only in `common`. There is no standing commitment to add a drift checker, another watcher, or a reusable-workflow migration at a repo-count threshold. Any new machinery needs a concrete benefit and the owner decision above.
 
-`scan-freshness.yml` is the exception to all of this: it is **not** copied anywhere. One watcher in `common` covers every repo in the org, so there is nothing to propagate and only one cron to keep alive.
-
-Self-contained is the right shape **while the org has ≤5 repos running this workflow**. The tradeoff is deliberate: each repo's CI is hermetic, no org-level reusable-workflow setting to wrangle, and new contributors can read the entire pipeline in one file. The cost is drift — fixes in `common` don't propagate automatically, and the version marker plus this propagation rule is the mitigation.
-
-**Switchover trigger:** when a 6th repo onboards the workflow (i.e. `>5` repos), evaluate moving to a `workflow_call` reusable workflow hosted in `quantcli/common` and consumed by each export-cli. At that point the copy-and-propagate cost exceeds the centralization cost. Revisit sooner if GitHub starts letting non-admins read the reusable-workflow org setting (today that's an admin-only surface, which would otherwise hide CI configuration from contributors). See [Lead Go review on PR #5](https://github.com/quantcli/common/pull/5#pullrequestreview-4260001530) for the original rationale.
-
-For reporting a vulnerability in a shipped CLI or in `common`, see [SECURITY.md](SECURITY.md). Do **not** open a public issue with exploit details.
+For sensitive vulnerability reports, use [SECURITY.md](SECURITY.md). Do not post exploit details publicly.
 
 ## License and sign-off
 
