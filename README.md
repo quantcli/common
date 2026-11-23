@@ -6,6 +6,7 @@ Shared contracts and conventions for [quantcli](https://github.com/quantcli) exp
 
 - **[CONTRACT.md](CONTRACT.md)** — the user-facing surface every `*-export-cli` adheres to: repo naming, timezone policy, date flags, output formats, auth, the `prime` subcommand, versioning.
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — branch and commit style, how to propose a contract change, how to add a new export-cli, the compat-test expectation.
+- **[CONSUMERS.md](CONSUMERS.md)** — known third-party consumers of each exporter's `--format json` surface. Read it before claiming [§9](CONTRACT.md#the-wire-surface)'s no-known-consumer carve-out; the GitHub counters §9 tests cannot see an integration that never starred the repo.
 - **[TRIAGE.md](TRIAGE.md)** — issue-triage SLA, label scheme, and routing for the four `quantcli/*` repos.
 - **[LICENSE](LICENSE)** — MIT.
 
