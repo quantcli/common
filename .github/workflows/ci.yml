@@ -115,8 +115,10 @@ jobs:
       # (cron auto-disabled for inactivity, deleted workflow, stale run,
       # unreadable repo), and security.yml's own module discovery and
       # version-file selection, which tools/securityworkflow runs against
-      # synthetic repository trees. A change that stops detecting one of them
-      # fails here.
+      # synthetic repository trees. tools/workflowtriggers adds the rule that no
+      # workflow in this repo may filter `pull_request` by base branch, which is
+      # how a stacked PR used to merge with no checks at all (QUA-115). A change
+      # that stops detecting one of them fails here.
       - name: go vet (tools)
         working-directory: tools
         run: go vet ./...
