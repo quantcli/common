@@ -52,6 +52,18 @@
 // adversarial model — not just the broader STUBCLI_FORMATS=__never__
 // reject-everything model.
 //
+// STUBCLI_DATASET selects which data set the stub emits. Unset (the
+// default) is the empty result the dates and formats suites expect.
+// "parity" emits records whose CSV header is a conforming projection
+// of their JSON keys; "drift" emits the same records with a CSV header
+// carrying unit-converted and computed columns the JSON codec has no
+// fields for; "sparse" keeps the conforming header but omits a key
+// from the second JSON record, violating §4's fixed-key-set rule
+// without touching cross-codec parity. The compat/parity self-tests
+// use the set to prove the bundle passes a conforming CLI and fails
+// each defect on its own subtest — a bundle that only ever ran against
+// a conforming stub would attest nothing.
+//
 // stubcli never makes a network request.
 package main
 
@@ -203,16 +215,126 @@ func parseAndEmit(progName string, args []string) {
 		os.Exit(1)
 	}
 
-	// The stub has no upstream, so it always reports the empty data
-	// set. Per CONTRACT §4: `[]` for json, header-only for csv,
-	// nothing for markdown.
-	switch *format {
+	emitDataset(*format)
+}
+
+// emitDataset writes the stub's data set in the requested codec.
+//
+// With STUBCLI_DATASET unset the stub reports the empty data set, which
+// is what the dates and formats suites expect. Per CONTRACT §4: `[]`
+// for json, header-only for csv, nothing for markdown.
+//
+// The "parity", "drift" and "sparse" datasets exist for the
+// compat/parity suite, which needs at least one record to have any
+// JSON keys to compare CSV columns against, and two to see a key set
+// disagree. "parity" and "drift" emit the same JSON records and differ
+// only in the CSV header; "sparse" keeps the conforming header and
+// changes the JSON. One variable per defect, so each failure lands on
+// the subtest that owns it.
+func emitDataset(format string) {
+	switch os.Getenv("STUBCLI_DATASET") {
+	case "parity":
+		emitParityDataset(format, parityCSVHeader)
+	case "drift":
+		emitParityDataset(format, driftCSVHeader)
+	case "sparse":
+		emitDatasetPair(format, sparseRecordJSON, sparseCSVHeader, "2026-11-20  3600s")
+	case "camel":
+		emitDatasetPair(format, camelRecordJSON, camelCSVHeader, "90 kg  x5")
+	case "":
+		switch format {
+		case "json":
+			fmt.Fprintln(os.Stdout, "[]")
+		case "csv":
+			fmt.Fprintln(os.Stdout, "date,value")
+		case "markdown":
+			// empty stdout
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "error: unknown STUBCLI_DATASET=%q\n", os.Getenv("STUBCLI_DATASET"))
+		os.Exit(2)
+	}
+}
+
+// parityRecordJSON exercises every projection shape CONTRACT §4
+// permits a CSV column to be derived from: a top-level scalar
+// (`date`), a top-level unit-named number (`duration_sec`), a nested
+// object (`sleep.deep_sec`, reachable as either `sleep_deep_sec` or
+// `deep_sec`), and an object inside an array (`tags[].name`, reachable
+// as `name` after denormalization).
+//
+// There are two records, carrying the same top-level keys, because
+// §4's fixed-key-set rule cannot be observed against one record — a
+// one-record fixture would make the JSONKeySetIsUniform subtest skip
+// and the conforming-stub tests would pass without exercising it. The
+// second record is the sparse case done *correctly*: it measures
+// nothing, and says so with `null` under every key it still carries.
+const parityRecordJSON = `[{"date":"2026-11-20","duration_sec":3600,` +
+	`"sleep":{"deep_sec":1200,"hr_average":52},"tags":[{"name":"nap"}]},` +
+	`{"date":"2026-11-21","duration_sec":null,` +
+	`"sleep":{"deep_sec":null,"hr_average":null},"tags":[]}]`
+
+// sparseRecordJSON is the same sparse case done wrongly, and the
+// miniature of withings `sleep`'s device-dependent `data{}`: the
+// second record simply omits `deep_sec` instead of reporting it as
+// null, so no consumer can rely on the field existing.
+//
+// Its CSV header is conforming against the union of the two records,
+// which is the point — the drift dataset moves the CSV header and this
+// one moves the JSON, so a failure here can only come from the
+// key-set subtest.
+const sparseRecordJSON = `[{"date":"2026-11-20","duration_sec":3600,"deep_sec":1200},` +
+	`{"date":"2026-11-21","duration_sec":3600}]`
+
+// sparseCSVHeader projects every key sparseRecordJSON emits across its
+// two records.
+const sparseCSVHeader = "date,duration_sec,deep_sec"
+
+// parityCSVHeader is conforming: every column names a field
+// parityRecordJSON emits. It deliberately mixes a full flattened path
+// (`sleep_deep_sec`), a bare nested leaf (`hr_average`), and an
+// array-element leaf (`name`) so the bundle's acceptance of all three
+// projections is pinned down rather than assumed.
+const parityCSVHeader = "date,duration_sec,sleep_deep_sec,hr_average,name"
+
+// driftCSVHeader is the withings `sleep` failure reproduced in
+// miniature: `duration_min` is a unit-converted column the json codec
+// has no field for, and `total_sleep_min` is a computed convenience
+// column with no json equivalent at all. Both are the "CSV MUST NOT
+// invent" case, and the parity bundle must fail on them.
+const driftCSVHeader = "date,duration_min,total_sleep_min"
+
+// camelRecordJSON is the liftoff shape: camelCase JSON keys, including
+// the `exerciseTypes` dispatch field and the polymorphic `inputOne`
+// that CONTRACT §4's unit-dispatch rule names explicitly. Two records,
+// for the same reason parityRecordJSON has two.
+const camelRecordJSON = `[{"sessionDurationSeconds":3600,"exerciseTypes":"WR","inputOne":110.2},` +
+	`{"sessionDurationSeconds":1800,"exerciseTypes":"DD","inputOne":5.0}]`
+
+// camelCSVHeader is the snake_case projection of camelRecordJSON. §4
+// permits a CLI to declare one case convention, so this header is
+// conforming even though no column matches a JSON key byte-for-byte.
+// It is the case that would fail if the parity bundle compared names
+// literally.
+const camelCSVHeader = "session_duration_seconds,exercise_types,input_one"
+
+func emitParityDataset(format, header string) {
+	emitDatasetPair(format, parityRecordJSON, header, "2026-11-20  3600s")
+}
+
+// emitDatasetPair writes one record in the requested codec: the JSON
+// array verbatim, or the CSV header plus one empty body row. The
+// parity bundle reads only the header, but emitting a row keeps the
+// stub a plausible CSV producer for any future suite.
+func emitDatasetPair(format, recordJSON, header, markdown string) {
+	switch format {
 	case "json":
-		fmt.Fprintln(os.Stdout, "[]")
+		fmt.Fprintln(os.Stdout, recordJSON)
 	case "csv":
-		fmt.Fprintln(os.Stdout, "date,value")
+		fmt.Fprintln(os.Stdout, header)
+		fmt.Fprintln(os.Stdout, strings.Repeat(",", strings.Count(header, ",")))
 	case "markdown":
-		// empty stdout
+		fmt.Fprintln(os.Stdout, markdown)
 	}
 }
 
