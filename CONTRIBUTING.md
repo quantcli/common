@@ -98,7 +98,7 @@ The check exists because two consecutive PRs landed `CONTRACT §5:` quotes that 
 
 Every PR — here and in each `*-export-cli` — is gated on the `security` workflow defined in [`.github/workflows/security.yml`](.github/workflows/security.yml). It runs three checks:
 
-- **`govulncheck`** — Go vulnerability database scan against the full dependency closure of every Go module in the repo. Modules are discovered by walking the tree, and finding none fails the job rather than skipping it. The toolchain it scans with is pinned to a module we ship, never to org-internal tooling — see the note on `// quantcli:not-shipped` below.
+- **`govulncheck`** — Go vulnerability database scan against the full dependency closure of every Go module in the repo. Modules are discovered by walking the tree, and finding none fails the job rather than skipping it.
 - **`osv-scanner`** — OSV transitive vulnerability scan over the working tree.
 - **License policy** — every direct + transitive Go dependency must resolve to one of the permissive SPDX ids listed in [`SECURITY.md`](SECURITY.md#supply-chain-policy). GPL-family, SSPL, BSL, and other non-permissive licenses are blocking.
 
@@ -110,11 +110,9 @@ If a PR fails the license-policy check, do not unblock it by adding a `replace` 
 
 To propose a security policy change (allowlist, severity bar, or workflow tooling), open an issue here first — these decisions ripple to every export-cli.
 
-**If you add a Go module to a repo, say whether we ship it.** The two jobs that analyse our code have to pin `setup-go` to one discovered `go.mod`, and `govulncheck` reports stdlib advisories relative to whatever toolchain that resolves to — so the pin has to come from a module we release. Selection therefore ranges over the shipped modules only, and a module that is *not* shipped declares itself with a `// quantcli:not-shipped` comment line in its `go.mod` (see [`tools/go.mod`](tools/go.mod)). Mark org-internal tooling; leave anything released unmarked. A missing marker is not a build error — it just hands the pin to tooling the first time that module's `go` directive overtakes the product's, and the symptom is a green scan over code that was never checked under the Go we ship. Regression coverage is in [`tools/securityworkflow`](tools/securityworkflow), which runs the workflow's own discovery blocks against synthetic repository trees.
-
 ### Where the workflow lives, and when to centralize it
 
-The `security` workflow is **copied verbatim** into every repo that runs it (`quantcli/common` plus each `*-export-cli`). `quantcli/common` is the source of truth; the `# security.yml v4 — source of truth: quantcli/common` marker at the top of each copy is the version key. When you change the workflow in `common`, propagate the change (and bump the version) to every repo that runs it. A future drift-check job will key off that marker.
+The `security` workflow is **copied verbatim** into every repo that runs it (`quantcli/common` plus each `*-export-cli`). `quantcli/common` is the source of truth; the `# security.yml v3 — source of truth: quantcli/common` marker at the top of each copy is the version key. When you change the workflow in `common`, propagate the change (and bump the version) to every repo that runs it. A future drift-check job will key off that marker.
 
 One line is expected to differ between copies: the header's pointer to this document is relative in `common` (`CONTRIBUTING.md`) and qualified in the export-clis (`quantcli/common CONTRIBUTING.md`). Everything else should match byte for byte.
 

@@ -104,19 +104,13 @@ jobs:
       - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           # tools is stdlib-only and analyses nothing we ship, so it is not
-          # bound by the go.mod pin the security.yml scanners use. The
-          # `// quantcli:not-shipped` marker in tools/go.mod is what makes that
-          # freedom safe — without it, raising the directive there would drag
-          # the scanning toolchain along with it (QUA-99).
+          # bound by the go.mod pin the security.yml scanners use.
           go-version: stable
           cache: false
-      # These tests are the regression coverage for the security controls we
-      # cannot reproduce on demand: the scan-freshness checker's failure modes
-      # (cron auto-disabled for inactivity, deleted workflow, stale run,
-      # unreadable repo), and security.yml's own module discovery and
-      # version-file selection, which tools/securityworkflow runs against
-      # synthetic repository trees. A change that stops detecting one of them
-      # fails here.
+      # These tests are the regression coverage for the scan-freshness checker:
+      # they pin the failure modes (cron auto-disabled for inactivity, deleted
+      # workflow, stale run, unreadable repo) that we cannot reproduce on demand
+      # against the live org. A change that stops detecting one of them fails here.
       - name: go vet (tools)
         working-directory: tools
         run: go vet ./...
