@@ -59,7 +59,9 @@
 // carrying unit-converted and computed columns the JSON codec has no
 // fields for; "sparse" keeps the conforming header but omits a key
 // from the second JSON record, violating §4's fixed-key-set rule
-// without touching cross-codec parity. The compat/parity self-tests
+// without touching cross-codec parity; "nullcollection" keeps both the
+// conforming header and the fixed key set and reports an empty
+// collection as `null` rather than `[]`. The compat/parity self-tests
 // use the set to prove the bundle passes a conforming CLI and fails
 // each defect on its own subtest — a bundle that only ever ran against
 // a conforming stub would attest nothing.
@@ -241,6 +243,8 @@ func emitDataset(format string) {
 		emitDatasetPair(format, sparseRecordJSON, sparseCSVHeader, "2026-11-20  3600s")
 	case "camel":
 		emitDatasetPair(format, camelRecordJSON, camelCSVHeader, "90 kg  x5")
+	case "nullcollection":
+		emitDatasetPair(format, nullCollectionRecordJSON, parityCSVHeader, "2026-11-20  3600s")
 	case "":
 		switch format {
 		case "json":
@@ -273,6 +277,25 @@ const parityRecordJSON = `[{"date":"2026-11-20","duration_sec":3600,` +
 	`"sleep":{"deep_sec":1200,"hr_average":52},"tags":[{"name":"nap"}]},` +
 	`{"date":"2026-11-21","duration_sec":null,` +
 	`"sleep":{"deep_sec":null,"hr_average":null},"tags":[]}]`
+
+// nullCollectionRecordJSON is parityRecordJSON with one byte-level
+// change: the second record reports its empty `tags` collection as
+// `null` instead of `[]`. That is liftoff's `exerciseData` defect in
+// miniature — in Go a nil slice marshals as `null`, so a field
+// declared `[]T` emits this without the exporter writing a line of
+// code to that effect.
+//
+// Everything else is held still on purpose. The key set is identical
+// across both records (`tags` is present either way), so
+// JSONKeySetIsUniform cannot see it, and the CSV header is
+// parityCSVHeader unchanged, so CSVColumnsExistInJSON cannot either.
+// A failure against this dataset can only come from
+// JSONCollectionsAreNeverNull — one variable per defect, as with
+// sparse and drift above.
+const nullCollectionRecordJSON = `[{"date":"2026-11-20","duration_sec":3600,` +
+	`"sleep":{"deep_sec":1200,"hr_average":52},"tags":[{"name":"nap"}]},` +
+	`{"date":"2026-11-21","duration_sec":null,` +
+	`"sleep":{"deep_sec":null,"hr_average":null},"tags":null}]`
 
 // sparseRecordJSON is the same sparse case done wrongly, and the
 // miniature of withings `sleep`'s device-dependent `data{}`: the

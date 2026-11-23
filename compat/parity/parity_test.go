@@ -200,6 +200,87 @@ func TestRunCrossCodec_KeySetSubtestActuallyRuns(t *testing.T) {
 	}
 }
 
+// TestRunCrossCodec_FailsOnNullCollection is the adversarial half of
+// the empty-collection subtest. The "nullcollection" dataset reports
+// an empty `tags` collection as `null` instead of `[]` — liftoff's
+// `exerciseData` defect, which is what a nil Go slice marshals to.
+//
+// Both other subtests must still pass: the key set is identical across
+// the two records and the CSV header is the conforming one, so the
+// only thing that moved is the value under one key. That is what makes
+// this subtest worth having — neither existing assertion can see this
+// defect, because neither looks at a value's type.
+func TestRunCrossCodec_FailsOnNullCollection(t *testing.T) {
+	if os.Getenv("COMPAT_PARITY_NULLCOLL_CHILD") == "1" {
+		parity.RunCrossCodec(t, compat.Runner{
+			Binary: buildStub(t),
+			Env:    []string{"STUBCLI_DATASET=nullcollection", "TZ=UTC"},
+		})
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRunCrossCodec_FailsOnNullCollection$", "-test.v")
+	cmd.Env = append(os.Environ(), "COMPAT_PARITY_NULLCOLL_CHILD=1")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("a null empty collection passed the parity bundle; the assertion is not load-bearing:\n%s", output)
+	}
+	if _, ok := err.(*exec.ExitError); !ok {
+		t.Fatalf("could not run child test: %v", err)
+	}
+	for _, want := range []string{"tags", "empty collection is `[]`, never `null`", "nil slice"} {
+		if !strings.Contains(string(output), want) {
+			t.Errorf("failure diagnostic does not mention %q:\n%s", want, output)
+		}
+	}
+	// `duration_sec` is null in the second record and is never an array,
+	// so it is a legitimately absent scalar — exactly what §4 requires.
+	// Reporting it would make the subtest fail every conforming exporter.
+	if strings.Contains(string(output), "duration_sec: array") {
+		t.Errorf("a null scalar was reported as a null collection; §4 requires an absent scalar to be null:\n%s", output)
+	}
+	for _, mustPass := range []string{
+		"PASS: TestRunCrossCodec_FailsOnNullCollection/CSVColumnsExistInJSON",
+		"PASS: TestRunCrossCodec_FailsOnNullCollection/JSONKeySetIsUniform",
+	} {
+		if !strings.Contains(string(output), mustPass) {
+			t.Errorf("%s did not pass; the subtests are entangled:\n%s", mustPass, output)
+		}
+	}
+}
+
+// TestRunCrossCodec_NullCollectionSubtestActuallyRuns guards the new
+// subtest against quietly becoming a no-op, the same way
+// TestRunCrossCodec_KeySetSubtestActuallyRuns does for the key set.
+//
+// This one matters more than most. The subtest is opportunistic — it
+// finds nothing unless the fixture carries both an empty and a
+// populated collection — so a regression that made it skip or no-op
+// would be invisible in every other test here. The conforming "parity"
+// dataset does carry both (`tags` is populated in record 0 and `[]` in
+// record 1), so a PASS here is a real exercise of the comparison and
+// not a vacuous one.
+func TestRunCrossCodec_NullCollectionSubtestActuallyRuns(t *testing.T) {
+	if os.Getenv("COMPAT_PARITY_NULLCOLL_RUNS_CHILD") == "1" {
+		parity.RunCrossCodec(t, compat.Runner{
+			Binary: buildStub(t),
+			Env:    []string{"STUBCLI_DATASET=parity", "TZ=UTC"},
+		})
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRunCrossCodec_NullCollectionSubtestActuallyRuns$", "-test.v")
+	cmd.Env = append(os.Environ(), "COMPAT_PARITY_NULLCOLL_RUNS_CHILD=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("conforming stub should pass, got %v:\n%s", err, output)
+	}
+	if !strings.Contains(string(output),
+		"PASS: TestRunCrossCodec_NullCollectionSubtestActuallyRuns/JSONCollectionsAreNeverNull") {
+		t.Errorf("JSONCollectionsAreNeverNull did not run against the conforming stub (skipped?):\n%s", output)
+	}
+}
+
 // TestRunCrossCodec_SkipDataPathGatesSubtest pins down that
 // Runner.SkipDataPath keeps the bundle adoptable by an exporter whose
 // data path needs credentials CI does not have — the same escape hatch

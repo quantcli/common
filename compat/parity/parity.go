@@ -7,6 +7,11 @@
 //     also emits for the same subcommand.
 //   - Every record in one `--format json` array carries the same
 //     top-level key set (CONTRACT §4, "Record shape").
+//   - No top-level key holds an array in one record and `null` in
+//     another. CONTRACT §4: "An empty collection is `[]`, never
+//     `null`". This one is opportunistic — it depends on the fixture
+//     carrying both an empty and a populated collection — and
+//     JSONCollectionsAreNeverNull says so at its own doc comment.
 //
 // That is the whole of it, and the narrowness is deliberate. The
 // cross-codec clause has two halves and only one of them is observable
@@ -66,7 +71,9 @@ package parity
 import (
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -114,6 +121,118 @@ func runOne(t *testing.T, r compat.Runner) {
 	t.Run("JSONKeySetIsUniform", func(t *testing.T) {
 		jsonKeySetIsUniform(t, r)
 	})
+	t.Run("JSONCollectionsAreNeverNull", func(t *testing.T) {
+		jsonCollectionsAreNeverNull(t, r)
+	})
+}
+
+// jsonCollectionsAreNeverNull asserts the clause CONTRACT §4: "An
+// empty collection is `[]`, never `null`", in the one form a black-box
+// test can see it — a top-level key that is an array in one record of
+// the export and `null` in another.
+//
+// The defect this catches is a Go default rather than a decision. A
+// field declared `[]T` marshals as `null` when the slice is nil, so an
+// exporter emits `null` for the empty case without writing a line of
+// code to that effect. The consumer-side symptom is out of proportion to
+// the cause: a consumer that recognizes a record by duck-typing the
+// field (`Array.isArray(exerciseData)`) fails *recognition*, and one
+// that validates its whole array before accepting it rejects the entire
+// export over a single empty element.
+//
+// JSONKeySetIsUniform does not cover this. The key is present in both
+// records — it is the *value* that disagrees — so the key-set diff is
+// empty and that subtest passes.
+//
+// This check is opportunistic, and that bound is worth stating plainly
+// because it limits what the subtest can attest. It fires only when the
+// data path happens to return one record with a populated collection and
+// another with an empty one. A fixture where every record's collections
+// are non-empty passes without having tested anything, and the bundle
+// cannot tell that apart from a genuine pass: a key that is `null` in
+// *every* record may be a legitimately absent scalar, which §4 requires
+// to be `null`. So a green here is evidence and not attestation — the
+// clause stays review-attested until an exporter's fixture carries both
+// states deliberately. An exporter adopting this subtest should make its
+// stub return one empty collection on purpose.
+func jsonCollectionsAreNeverNull(t *testing.T, r compat.Runner) {
+	t.Helper()
+	if r.SkipDataPath {
+		t.Skipf("data-path subtests disabled via Runner.SkipDataPath")
+	}
+	if !r.SupportsFormat(compat.FormatJSON) {
+		t.Skipf("--format json not declared in Runner.SupportedFormats")
+	}
+
+	records := jsonRecords(t, r)
+	if len(records) < 2 {
+		t.Skipf("--format json returned %d record(s); this subtest compares one record's array-valued key "+
+			"against another record's value for the same key, so it needs two. "+
+			"See compat/README.md#stubbing-the-upstream", len(records))
+	}
+
+	// Keys seen holding an array, with the record index that showed it —
+	// used so the diagnostic can point at a concrete pair.
+	arrayAt := map[string]int{}
+	nullAt := map[string][]int{}
+	for i, rec := range records {
+		obj, ok := rec.(map[string]any)
+		if !ok {
+			continue // reported by JSONKeySetIsUniform
+		}
+		for k, v := range obj {
+			switch v.(type) {
+			case []any:
+				if _, seen := arrayAt[k]; !seen {
+					arrayAt[k] = i
+				}
+			case nil:
+				nullAt[k] = append(nullAt[k], i)
+			}
+		}
+	}
+
+	var offenders []string
+	for _, k := range sortedKeys(nullAt) {
+		arrIdx, isCollection := arrayAt[k]
+		if !isCollection {
+			// `null` everywhere it appears: an absent scalar, which §4
+			// requires to be exactly this. Not a finding.
+			continue
+		}
+		offenders = append(offenders, fmt.Sprintf("  %s: array in record %d, null in record(s) %s",
+			k, arrIdx, joinInts(nullAt[k])))
+	}
+	if len(offenders) == 0 {
+		return
+	}
+
+	t.Errorf("%d top-level key(s) hold an array in one record and null in another "+
+		"(CONTRACT.md §4, record shape: an empty collection is `[]`, never `null`):\n%s\n"+
+		"In Go a nil slice marshals as null, so declaring the field `[]T` is enough to cause this. "+
+		"Emit `[]T{}` for the empty case. A consumer that duck-types the field to recognize the record "+
+		"fails recognition on null, not just one value — the fix is a patch and needs no version bump.",
+		len(offenders), strings.Join(offenders, "\n"))
+}
+
+// sortedKeys returns m's keys sorted, so the diagnostic is stable across
+// runs rather than following Go's map iteration order.
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// joinInts renders record indices for the diagnostic.
+func joinInts(xs []int) string {
+	parts := make([]string, len(xs))
+	for i, x := range xs {
+		parts[i] = strconv.Itoa(x)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // jsonKeySetIsUniform asserts §4's "Record shape" rule in the form a

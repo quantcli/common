@@ -33,10 +33,16 @@ var sectionHeaderRE = regexp.MustCompile(`(?m)^##\s+(\d+)\.\s+`)
 
 // minContractSections is the floor on how many top-level `## N. <title>`
 // sections CONTRACT.md should currently parse to. CONTRACT.md has
-// sections 1–8 today; a header refactor that drops below this floor
+// sections 1–9 today; a header refactor that drops below this floor
 // would silently let every cited section "not exist" and pass every
 // quote check vacuously. Bump this number when the contract grows.
-const minContractSections = 8
+//
+// §9 ("Versioning and releases") landed after this floor was first
+// written and the floor was not bumped with it, which is the failure
+// mode the floor exists to prevent applied to itself: a guard against
+// vacuous passing that silently stops covering the newest section. If
+// you add a section, this constant is part of the change.
+const minContractSections = 9
 
 // citationProblem records one failing citation so the top-level test
 // can render all of them in a single diagnostic.
