@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -623,6 +624,47 @@ func TestShippedPolicyFileIsValid(t *testing.T) {
 	for _, e := range cfg.Exempt {
 		if strings.HasSuffix(e.Repo, "-export-cli") || e.Repo == "common" {
 			t.Errorf("%s is a code repo and must not be exempt from scanning", e.Repo)
+		}
+	}
+}
+
+// The reason codes are a runbook contract, not internal strings: they are
+// printed in the report and carried into the alert issue, and SECURITY.md is
+// where the operator who reads that alert looks them up. This pins that
+// contract.
+//
+// It is here because the gap was invisible until it wasn't. `exempt-entry-
+// unknown` shipped undocumented and sat dormant, then exempting a private repo
+// made it fire on every scheduled run — a code in every report with no entry to
+// look up. The codes are read out of the source rather than restated here, so a
+// new one without a runbook row fails this test instead of quietly passing it.
+func TestEveryReasonCodeHasARunbookEntry(t *testing.T) {
+	src, err := os.ReadFile("check.go")
+	if err != nil {
+		t.Fatalf("read check.go: %v", err)
+	}
+	codes := regexp.MustCompile(`(?m)^\tReason\w+\s*=\s*"([^"]+)"`).FindAllStringSubmatch(string(src), -1)
+	// A pattern that silently matches nothing would make this test vacuously
+	// green, which is the exact failure shape it exists to catch.
+	if len(codes) < 10 {
+		t.Fatalf("matched %d reason codes in check.go, want at least 10: the pattern has drifted from the const block", len(codes))
+	}
+
+	// A passing or skipped repo gives the operator nothing to clear, so those
+	// codes need no row. Everything that fails a build or qualifies a coverage
+	// claim must be documented.
+	noRunbookNeeded := map[string]bool{ReasonFresh: true, ReasonExempt: true, ReasonArchived: true}
+
+	doc, err := os.ReadFile(filepath.Join("..", "..", "SECURITY.md"))
+	if err != nil {
+		t.Fatalf("read SECURITY.md: %v", err)
+	}
+	for _, m := range codes {
+		if noRunbookNeeded[m[1]] {
+			continue
+		}
+		if !strings.Contains(string(doc), "`"+m[1]+"`") {
+			t.Errorf("reason code %q is emitted but absent from SECURITY.md; an operator who sees it in an alert has nowhere to look it up", m[1])
 		}
 	}
 }
