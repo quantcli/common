@@ -34,7 +34,7 @@ Branches are short-lived. Rebase on `main` rather than merging `main` back in. O
 - Body answers three questions: **What changed? Why? What does it imply for the per-service CLIs?** That third question is the one PR authors miss most often, and it's the one reviewers care about most.
 - Mark the PR as draft until CI is green.
 - Squash-merge by default. Use a merge commit only if the individual commits are independently meaningful (rare).
-- The Lead Go Engineer coordinates technical review. Preserve branch protection and independent review; DT retains final merge and release control. Expect one round of review on most PRs.
+- The Lead Go Engineer coordinates technical review. Preserve branch protection and independent review; the owner or an explicitly delegated maintainer makes final merge and release decisions. Expect one round of review on most PRs.
 
 ## Proposing a contract change
 

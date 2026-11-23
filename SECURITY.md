@@ -12,7 +12,7 @@ Urgent security work requires actual compromise, exposed credentials, or a credi
 
 New scanners, custom workflow parsers, cross-repository monitors, monitoring of monitors, broader credentials, and additional recurring security automations require an explicit owner decision before implementation. Do not create follow-up tasks merely because residual risk exists. Record accepted limitations briefly and stop; accepted residual risk is a valid completed outcome. Do not repeatedly notify DT about unchanged warnings.
 
-Existing deployed checks stay enabled pending owner approval of specific operational changes. Preserve credential protections, branch protection, independent review, and DT's final merge and release control.
+Existing deployed checks stay enabled pending owner approval of specific operational changes. Preserve credential protections, branch protection, and independent review. The owner or an explicitly delegated maintainer makes final merge and release decisions.
 
 ## Reporting a vulnerability
 
@@ -95,4 +95,4 @@ For a simpler operational baseline, prefer `govulncheck` for Go vulnerabilities 
 
 Signed releases, SBOM publication, a formal threat-model document, penetration testing, drift monitoring, and additional security automation are not standing commitments or automatic follow-up work. Reconsider them only for a concrete user benefit and with owner approval where new infrastructure is involved.
 
-Policy changes are reviewed through a PR in `quantcli/common`; operational changes need the specific owner decision described above. DT retains final merge and release control.
+Policy changes are reviewed through a PR in `quantcli/common`; operational changes need the specific owner decision described above. The owner or an explicitly delegated maintainer makes final merge and release decisions.
