@@ -69,6 +69,18 @@ type Repo struct {
 	DefaultBranch string `json:"default_branch"`
 }
 
+// OrgCounts is the organisation's own tally of its repositories, used to prove
+// the sweep enumerated every repo rather than only the ones its token can see.
+//
+// TotalPrivate is a pointer on purpose: `total_private_repos` is omitted
+// entirely for a caller without organisation read scope, and "the field was
+// absent" has to stay distinguishable from "the org has no private repos".
+// Conflating them is what would turn an unverifiable claim into a false one.
+type OrgCounts struct {
+	PublicRepos  int  `json:"public_repos"`
+	TotalPrivate *int `json:"total_private_repos"`
+}
+
 // Workflow is the subset of the Actions workflow API we act on. State is the
 // field that exposes GitHub's 60-day auto-disable: a workflow switched off for
 // inactivity reports `disabled_inactivity` while still existing in the repo.
@@ -112,6 +124,9 @@ func (r Run) Started() (time.Time, error) {
 // inactivity, a deleted workflow, a repo that has never completed a run).
 type API interface {
 	ListRepos(org string) ([]Repo, error)
+	// OrgRepoCounts returns the org's own repository tally, so the sweep can
+	// check its enumeration against it instead of trusting it.
+	OrgRepoCounts(org string) (OrgCounts, error)
 	ListWorkflows(org, repo string) ([]Workflow, error)
 	// LatestCompletedRun returns the newest completed run of workflowID on
 	// branch, or nil if the workflow has never completed one there.
@@ -143,7 +158,60 @@ const (
 	ReasonScanRed       = "scan-red"
 	ReasonUnreadable    = "unreadable"
 	ReasonExemptUnknown = "exempt-entry-unknown"
+	ReasonCoverageShort = "coverage-incomplete"
+	ReasonCoverageUnver = "coverage-unverified"
 )
+
+// coverageRow is the pseudo-repo name carrying the scope verdict. It sorts
+// ahead of real repo names, so the report states what it covered before it
+// states what it found.
+const coverageRow = "(org coverage)"
+
+// CoverageScope records how much of the org the sweep could actually see. The
+// checker enumerates `/orgs/{org}/repos`, which returns only repositories the
+// token is permitted to see — so a repo can be missing from the sweep without
+// being missing from the org, and a report that says nothing about this reads
+// as full coverage either way. That is the same silent-failure shape the
+// freshness check itself exists to remove, one level up.
+type CoverageScope struct {
+	// EnumeratedPublic and EnumeratedPrivate are what the sweep actually saw.
+	EnumeratedPublic  int
+	EnumeratedPrivate int
+	// OrgPublic is the org's own public-repo count. Always readable.
+	OrgPublic int
+	// OrgPrivate is the org's private-repo count, or nil when the token lacks
+	// the scope to read it.
+	OrgPrivate *int
+	// CountsErr is set when the org endpoint could not be read at all.
+	CountsErr error
+}
+
+// PrivateVerified reports whether the sweep can prove it saw every private
+// repo. False means the report must not claim org-wide coverage.
+func (c CoverageScope) PrivateVerified() bool {
+	return c.CountsErr == nil && c.OrgPrivate != nil
+}
+
+// shortfall returns the coverage gap the sweep can actually prove, as a
+// human-readable description, or "" when none is provable.
+func (c CoverageScope) shortfall() string {
+	if c.CountsErr != nil {
+		return ""
+	}
+	var parts []string
+	if c.EnumeratedPublic < c.OrgPublic {
+		parts = append(parts, fmt.Sprintf("%d of %d public repos",
+			c.EnumeratedPublic, c.OrgPublic))
+	}
+	if c.OrgPrivate != nil && c.EnumeratedPrivate < *c.OrgPrivate {
+		parts = append(parts, fmt.Sprintf("%d of %d private repos",
+			c.EnumeratedPrivate, *c.OrgPrivate))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "sweep enumerated " + strings.Join(parts, " and ")
+}
 
 // Result is one row of the sweep.
 type Result struct {
@@ -174,7 +242,8 @@ func Check(api API, cfg *Config, now time.Time) ([]Result, error) {
 	}
 	seen := map[string]bool{}
 
-	var results []Result
+	results := []Result{coverageResult(api, cfg, repos)}
+
 	for _, repo := range repos {
 		seen[repo.Name] = true
 		if reason, ok := exempt[repo.Name]; ok {
@@ -201,6 +270,59 @@ func Check(api API, cfg *Config, now time.Time) ([]Result, error) {
 
 	sort.Slice(results, func(i, j int) bool { return results[i].Repo < results[j].Repo })
 	return results, nil
+}
+
+// coverageResult judges the sweep's own reach before it judges any repo.
+//
+// `/orgs/{org}/repos` is filtered by what the caller may see, so the row count
+// is a property of the token, not of the org. Measured 2026-11-23 against
+// quantcli: the scheduled run's repo-scoped GITHUB_TOKEN enumerated 6 repos
+// and reported "All non-exempt repos have a successful run inside the window",
+// while the identical binary run with an org-scoped token enumerated 7 — the
+// seventh being a private repo created three days earlier, with no
+// security.yml. Three consecutive scheduled runs were green with that repo
+// invisible to them. Nothing in the report hinted that its scope was narrower
+// than the sentence it printed.
+//
+// So: compare the enumeration against the org's own tally and fail on any gap
+// we can prove, and where we cannot prove one, say that rather than implying
+// full coverage. The public count is always readable, so a public repo missed
+// for any reason — pagination, permissions, a filtered listing — is a hard
+// failure. The private count needs org read scope; without it the sweep is
+// honest about not knowing instead of going red every run, which would train
+// everyone to ignore the row.
+func coverageResult(api API, cfg *Config, repos []Repo) Result {
+	scope := CoverageScope{}
+	for _, r := range repos {
+		if r.Private {
+			scope.EnumeratedPrivate++
+		} else {
+			scope.EnumeratedPublic++
+		}
+	}
+
+	counts, err := api.OrgRepoCounts(cfg.Org)
+	if err != nil {
+		scope.CountsErr = err
+		return Result{coverageRow, Fail, ReasonCoverageShort,
+			fmt.Sprintf("could not read the org's repo tally, so the sweep cannot show it saw every repo: %v", err), ""}
+	}
+	scope.OrgPublic = counts.PublicRepos
+	scope.OrgPrivate = counts.TotalPrivate
+
+	if gap := scope.shortfall(); gap != "" {
+		return Result{coverageRow, Fail, ReasonCoverageShort,
+			gap + " — repos the sweep cannot see are not being scanned, and would otherwise be indistinguishable from repos that passed", ""}
+	}
+
+	if !scope.PrivateVerified() {
+		return Result{coverageRow, Warn, ReasonCoverageUnver,
+			fmt.Sprintf("saw all %d public repos; this token cannot read the org's private-repo count, so private repos are outside the sweep's provable scope", scope.OrgPublic), ""}
+	}
+
+	return Result{coverageRow, Pass, ReasonFresh,
+		fmt.Sprintf("enumerated every repo the org reports (%d public, %d private)",
+			scope.OrgPublic, *scope.OrgPrivate), ""}
 }
 
 func checkRepo(api API, cfg *Config, now time.Time, repo Repo) Result {
@@ -317,7 +439,14 @@ func Report(cfg *Config, results []Result, now time.Time) string {
 	failures := Failures(results)
 	b.WriteString("\n")
 	if len(failures) == 0 {
-		fmt.Fprintf(&b, "All non-exempt repos have a successful `%s` run inside the window.\n", cfg.Workflow)
+		// Scoped deliberately to what the sweep enumerated. The unqualified
+		// claim this replaced ("All non-exempt repos…") was printed by three
+		// green runs that could not see one of the org's repos at all; see
+		// coverageResult. The `(org coverage)` row says how wide the sweep
+		// reached, and this sentence must not out-claim it.
+		fmt.Fprintf(&b, "Every non-exempt repo in this sweep's scope has a successful `%s` "+
+			"run inside the window — see the `%s` row for how wide that scope is.\n",
+			cfg.Workflow, coverageRow)
 		return b.String()
 	}
 	fmt.Fprintf(&b, "**%d repo(s) are not currently covered by a fresh scan.** "+
