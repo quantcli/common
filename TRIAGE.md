@@ -1,16 +1,24 @@
 # Issue triage policy
 
-This document defines how inbound issues and discussions are triaged across the four `quantcli/*` repos:
+This document defines how inbound issues and pull requests are triaged across every public `quantcli/*` repo that can receive them. Issues are enabled on all six, so all six are in scope.
+
+**Code repos** — the full policy below applies, including the canonical label vocabulary:
 
 - [`quantcli/common`](https://github.com/quantcli/common) — contract + shared compat library
 - [`quantcli/crono-export-cli`](https://github.com/quantcli/crono-export-cli)
 - [`quantcli/liftoff-export-cli`](https://github.com/quantcli/liftoff-export-cli)
 - [`quantcli/withings-export-cli`](https://github.com/quantcli/withings-export-cli)
 
-It exists so that reporters know what to expect, and so that the four repos behave the same way. Like [`CONTRACT.md`](CONTRACT.md), this is a coordination document: a change here is a change every repo agrees to follow.
+**Support repos** — in scope for first touch, the SLA, and routing; they do **not** carry the canonical labels today (see [Canonical label scheme](#canonical-label-scheme)):
+
+- [`quantcli/homebrew-tap`](https://github.com/quantcli/homebrew-tap) — Homebrew formulae for the export CLIs
+- [`quantcli/.github`](https://github.com/quantcli/.github) — org profile, shared workflow templates, org-wide `CODEOWNERS`
+
+It exists so that reporters know what to expect, and so that these repos behave the same way. Like [`CONTRACT.md`](CONTRACT.md), this is a coordination document: a change here is a change every repo agrees to follow.
 
 ## Scope and posture
 
+- **Issues and PRs only.** GitHub Discussions is disabled on all six repos, so there is no discussion surface to triage. If Discussions is ever enabled, this policy is amended first — targets for a channel that does not exist cannot be measured, so none are published here.
 - **Public-by-default.** Every comment, label, and reply on these repos is public. Security-sensitive reports are an exception — see [SECURITY.md](SECURITY.md).
 - **Clear, neutral replies.** Replies stay neutral and technical. We don't advocate for one upstream over another, and we don't critique competing tools or formats.
 - **Reporter first.** First reply acknowledges the human and names a concrete next step. Diagnosis comes second.
@@ -38,14 +46,14 @@ For scope limits, record accepted residual risk briefly and stop. Do not generat
 
 "First touch" is a triage comment from a maintainer — a label set, a routing decision, a request for a repro, or a substantive reply. It is **not** a thumbs-up reaction or a silent label change.
 
-Targets are measured in **business days** (Mon–Fri, US/Eastern), excluding weekends and US federal holidays. The clock starts when the issue or discussion is opened, or when a reporter responds to a `triage:needs-info` ask.
+Targets are measured in **business days** (Mon–Fri, US/Eastern), excluding weekends and US federal holidays. The clock starts when the issue is opened, or when a reporter responds to a `triage:needs-info` ask.
 
-| Priority | Issues | Discussions |
-|---|---|---|
-| `priority:critical` | **4 business hours** | n/a — re-file as an issue |
-| `priority:high` | **1 business day** | 2 business days |
-| `priority:medium` | **2 business days** | 3 business days |
-| `priority:low` | **5 business days** | 5 business days |
+| Priority | First touch |
+|---|---|
+| `priority:critical` | **4 business hours** |
+| `priority:high` | **1 business day** |
+| `priority:medium` | **2 business days** |
+| `priority:low` | **5 business days** |
 
 Untriaged inbound (`triage:needs-triage`) inherits the **medium** SLA until a triage decision is made.
 
@@ -53,9 +61,26 @@ A PR from an external contributor gets a "thanks, here's what happens next" comm
 
 These are **first-touch** targets, not resolution targets. Time-to-fix depends on engineering scope and is tracked per-issue, not by this document.
 
+### What backs these targets
+
+Nothing measures them. As of 2026-11-24, no scheduled job and no event hook watches inbound **issues** on any of the six repos; first touch on an issue happens when a maintainer looks at the repo. The targets above describe the response we aim for, not a mechanism that enforces it.
+
+Automation does run on inbound **pull requests**, and none of it is a first touch as defined above:
+
+- `auto-assign.yml` (all six repos) assigns a newly opened PR to the owner — an assignment, not a triage comment.
+- `pr-review-binaries.yml` (`liftoff-export-cli` only) comments download links for the review binaries CI built.
+- `claude-code-review.yml` (`withings-export-cli` only) posts an automated review on every PR.
+- `claude.yml` (the three export CLIs; not `common`) answers an issue or comment only when its text contains `@claude`, so it is reporter-initiated and watches nothing on its own.
+
+None of the four sets a label, makes a routing decision, or acknowledges a reporter, so none of them starts or stops the clock above.
+
+This is stated plainly because the gap is load-bearing. A target with no mechanism behind it cannot be noticed when it stops being met: a breach can sit for months and look exactly like a quiet week. If you are relying on this SLA, rely on it knowing that.
+
+A recurring inbound check that would back these targets is proposed and awaiting maintainer sign-off. If it is adopted, this section names it and the numbers above stand as measurable commitments. If it is declined, the numbers are replaced with best-effort wording. Either way this section is updated in the same change — it must always name the current mechanism or say there is none.
+
 ## Triage decisions
 
-Every new issue and discussion gets, at minimum:
+Every new issue on a code repo gets, at minimum:
 
 1. One `priority:*` label.
 2. One `kind:*` label (what the report is).
@@ -70,7 +95,9 @@ Empathy-before-explanation order: the first comment acknowledges the reporter as
 
 ## Canonical label scheme
 
-The four repos share one label vocabulary. Adding, renaming, or removing labels follows the same PR-against-`common` flow as a contract change.
+The four code repos share one label vocabulary. Adding, renaming, or removing labels follows the same PR-against-`common` flow as a contract change.
+
+The two support repos (`homebrew-tap`, `.github`) carry only GitHub's default labels today — none of the `triage:*`, `kind:*`, `area:*`, or `priority:*` labels below exist there. Inbound on those repos still gets a first-touch comment and a routing decision under this policy; it just gets no canonical labels until the vocabulary is applied to them, which is tracked separately. Do not cite a `priority:*` label on a support repo as though it were set.
 
 ### `triage:*` — state in the triage funnel
 
@@ -89,7 +116,7 @@ The four repos share one label vocabulary. Adding, renaming, or removing labels 
 | `kind:enhancement` | New feature or capability inside charter. |
 | `kind:question` | Usage / "how do I" — often resolves to a docs gap. |
 | `kind:docs` | Docs-only change (`README.md`, `CONTRIBUTING.md`, `CONTRACT.md` prose, `prime` text). |
-| `kind:discussion` | Open-ended; no specific action expected. |
+| `kind:discussion` | Open-ended issue; no specific action expected. Unrelated to GitHub Discussions, which is disabled. |
 | `kind:security` | Security work; priority depends on credible exploitability and user harm. Route sensitive reports privately per [SECURITY.md](SECURITY.md). Routine public maintenance can stay public. |
 
 ### `area:*` — which surface
@@ -98,8 +125,8 @@ The four repos share one label vocabulary. Adding, renaming, or removing labels 
 |---|---|---|
 | `area:contract` | `common` | `CONTRACT.md` prose or semantics. |
 | `area:compat` | `common` | The `compat/` library or its bundles. |
-| `area:ci` | all four | GitHub Actions workflows, security scans, releases. |
-| `area:docs` | all four | Repo docs other than `CONTRACT.md`. |
+| `area:ci` | all four code repos | GitHub Actions workflows, security scans, releases. |
+| `area:docs` | all four code repos | Repo docs other than `CONTRACT.md`. |
 | `area:auth` | export-CLIs | `auth status` / `auth login` / env-var auth. |
 | `area:format` | export-CLIs | `--format markdown` / `json` / `csv` and codec behavior. |
 | `area:dates` | export-CLIs | `--since` / `--until` parsing and windowing. |
@@ -136,6 +163,13 @@ Triage routes by `kind` + `area`, not by name:
 - `kind:question` or `kind:docs` → first-touch reply from Community Manager; file a `kind:docs` follow-up against Documentation & Education if the question signals a docs gap.
 - `kind:discussion` → leave open; revisit if it converges on a specific action.
 
+On the two support repos, where the `kind:*` / `area:*` labels are not available, route by subject instead:
+
+- A broken or stale Homebrew formula / cask, or any `brew install` failure → the export CLI maintainer (today: Lead Go Engineer).
+- A shared workflow template in `.github` → Lead Go Engineer.
+- Org profile copy in `.github` → Community Manager.
+- Anything on a support repo that is really about a CLI's behavior → re-file on that CLI's repo with a pointer, and close the original as moved. Don't triage the behavior on the wrong repo.
+
 A repeated question — three or more independent reporters asking the same thing — is a docs bug, not a user bug. File the docs follow-up with concrete language pulled from the threads.
 
 ## Repro request template
@@ -166,6 +200,6 @@ Open a PR against `quantcli/common`. The flow mirrors a contract change:
 
 1. State the current behavior, the proposed behavior, and why.
 2. Land the change here.
-3. Apply any label rename across all four repos in a follow-up PR / scripted change, gated on maintainer review.
+3. Apply any label rename across all repos that carry the vocabulary in a follow-up PR / scripted change, gated on maintainer review.
 
-Label additions, renames, and removals require maintainer review on the PR. Bulk label changes across the four repos require an explicit go-ahead in the PR thread before they are applied.
+Label additions, renames, and removals require maintainer review on the PR. Bulk label changes across repos require an explicit go-ahead in the PR thread before they are applied.
