@@ -101,7 +101,9 @@ Output rules:
 - **stdout**: data only, in the requested format.
 - **stderr**: errors and progress messages. Pipelines using `>` to redirect stdout do not need `2>&1`.
 - **Empty result**: success with empty output (`[]` for JSON, no rows for markdown/CSV), exit code 0. Empty is not an error.
-- **Exit code**: 0 success, non-zero only for auth or network failure.
+- **Exit code**: 0 when the export was delivered; non-zero when it was not — auth or network failure, an invalid flag, or output that could not be written.
+
+**Shipped output is not reshaped for conformance.** Scalar typing and Record shape below bind new subcommands and new fields. An existing key, its nesting, or a subcommand's top-level container changes only to fix a bug a user would notice — a wrong, missing, or misleading value — and then as narrowly as the fix allows, preferring an additive field to a rename. Not yet matching these clauses is not by itself a reason to change what a CLI already emits.
 
 ### Scalar typing
 
@@ -212,9 +214,11 @@ Where the Status table stands against that rule today, so the remaining `human` 
 
 The §4 record-shape, unit-declaration and parity rows are `—` across the board because they are new, and `—` there is a statement about attestation, not a verdict:
 
-- **liftoff-export**'s `csv` codec documents "a key JSON omits" as a case it handles, which means its `json` codec omits keys where [Record shape](#record-shape) now asks for `null`. Known work, not yet ticketed against the new clause.
-- **withings-export**'s `sleep`/`workouts` `data{}` key set follows the user's device, which is the defect the clause was written for. [withings-export-cli#57](https://github.com/quantcli/withings-export-cli/pull/57) replaces it with declared flat rows and carries a repo-local parity test (`cmd/parity_test.go`), which on merge earns a **local** cell on all three rows — and **machine** on the parity and record-shape rows once its stub returns two non-empty records and it wires `parity.RunCrossCodec`.
-- **crono-export** has not been audited against these clauses. Its `—` is "nobody has looked", which is the one thing this table should never leave implied; the audit is the next action on whichever ticket adopts the `parity` bundle there.
+These are recorded, not scheduled: shipped output is grandfathered ([§4](#4-output-format)).
+
+- **liftoff-export**'s `json` codec may omit keys where [Record shape](#record-shape) asks for `null`; its `csv` codec handles that as an empty cell.
+- **withings-export**'s `sleep`/`workouts` re-emit upstream `data{}`, whose keys follow the user's device. Its `csv` codec leaves a value the device did not report empty rather than `0`.
+- **crono-export** has not been audited against these clauses.
 
 ### Running the data path without credentials
 
