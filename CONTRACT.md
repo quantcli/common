@@ -123,7 +123,7 @@ Scalar typing pins down a field's *type*. This clause pins down which fields a r
 
 **Declared fields live at the top level of the record.** A consumer should not have to know how deep a quantity sits. Nesting is permitted where the data is genuinely a nested collection (a session containing laps), and in that case the nested records follow this clause too — fixed key set, `null` for absent.
 
-**A raw upstream passthrough is not part of the key set.** Re-emitting an upstream blob verbatim (withings `sleep`/`workouts` `data{}`) is permitted and useful — nothing is lost in transit — but the keys inside it are upstream's choice, vary by device and account, and therefore carry no fixed-key-set promise. A quantity that appears *only* inside such a blob is not an emitted field of this contract. That cuts both ways: it is why a blob cannot satisfy parity below, and it is why a blob can later be replaced (§9, [the wire surface](#the-wire-surface)) where a declared field could not.
+**A raw upstream passthrough is not part of the key set.** Re-emitting an upstream blob verbatim (withings `sleep`/`workouts` `data{}`) is permitted and useful — nothing is lost in transit — but the keys inside it are upstream's choice, vary by device and account, and therefore carry no fixed-key-set promise. A quantity that appears *only* inside such a blob is not an emitted field of this contract. That cuts both ways: it is why a blob cannot satisfy parity below, and it is why losing a key *inside* a blob is not the breaking change that removing a declared field is. It does not follow that a shipped blob may be swapped out at will — what may be done about one is in the posture list below.
 
 ### Units and cross-codec parity
 
@@ -142,7 +142,7 @@ Scalar typing above pins down a field's JSON *type*. It does not say what the nu
 - **Every CSV column names a field the `json` codec also emits for that subcommand.** The match is on the field name, under one case convention declared per CLI in `prime` — crono maps a key to a column verbatim, liftoff maps `camelCase` to `snake_case`. Either is fine; picking neither is not.
 - **CSV MAY omit and MAY denormalize.** A field that does not fit a flat row may be absent, and nested records may be flattened or expanded to one row per deepest repeated element with the parent's scalars repeated. Row *cardinality* is therefore not constrained; field *names and units* are.
 - **CSV MUST NOT invent.** A column with no `json` counterpart means the `json` codec is missing a field, and the fix is to add it to `json` — not to accept two datasets. A computed convenience column (withings `sleep`'s `total_sleep_min`, which `json` has no equivalent for) is exactly this case.
-- **A raw upstream passthrough does not satisfy parity.** Per [Record shape](#record-shape) the quantities inside a verbatim upstream blob are not emitted fields of this contract, so a CSV column cannot be projected from one. The named, unit-declaring, projectable fields live at the top level — either alongside the raw blob, or in place of it (see the posture list below).
+- **A raw upstream passthrough does not satisfy parity.** Per [Record shape](#record-shape) the quantities inside a verbatim upstream blob are not emitted fields of this contract, so a CSV column cannot be projected from one. The named, unit-declaring, projectable fields live at the top level — normally alongside the raw blob, which stays put; replacing it is narrowly gated by the posture list below.
 
 **Posture when an exporter is out of conformance.** Close the gap additively, in this order, and never by reshaping what consumers already read:
 
@@ -152,7 +152,9 @@ Scalar typing above pins down a field's JSON *type*. It does not say what the nu
 
 Reshaping or dropping a **declared** field to reach parity is explicitly not preferred: it breaks every consumer reading it today to solve a problem an additive sibling already solves.
 
-A raw passthrough is the exception, and it is a one-time one. Because a blob carries no fixed-key-set promise ([Record shape](#record-shape)), an exporter MAY **replace** it with declared, unit-named top-level fields in a `major` — provided every quantity the blob carried is reachable from the new fields, with the mapping enumerated in the PR and in `prime`. Replacing with no data loss is a different act from dropping: the first moves a quantity onto stable ground, the second removes it, and only the first is permitted here. The alternative — keeping both forever — means double-reporting every quantity under two names, two shapes and (where the blob is upstream's) two unit conventions, which is the disagreement this clause exists to end. [withings-export-cli#57](https://github.com/quantcli/withings-export-cli/pull/57) is the first instance and takes this path: its `sleep` row maps every field of the upstream `data{}` onto a declared, unit-named top-level field, which is the test this clause asks for.
+A raw passthrough is not an exception to that order. A blob carries no fixed-key-set promise ([Record shape](#record-shape)), so the paragraph above — which protects *declared* fields — does not reach the keys inside it. But the blob is itself an existing key in a shipped record, and **shipped output is not reshaped for conformance** ([§4](#4-output-format)) governs it like any other: it changes to fix a bug a user would notice, as narrowly as that fix allows, and not because this section would have shaped it differently from the start. Step 1 is the answer for a blob too — declared, unit-named top-level fields land *alongside* it, which is what closes withings `sleep`'s parity gap. Swapping the blob out wholesale is rarely the narrowest fix available, and where it genuinely is, it remains a `major` under [§9's wire-surface rules](#the-wire-surface) and MUST leave every quantity the blob carried reachable from the new fields, with the mapping enumerated in the PR and in `prime`.
+
+The cost of that order is real and accepted: a quantity can end up reported twice — once inside the blob under upstream's name and unit, once as a declared field under ours — and `prime` has to say which is canonical. That is the cheaper of the two errors. A duplicated quantity leaves every consumer working; a replaced blob breaks the ones reading it today to tidy a record for the ones who are not.
 
 ## 5. Auth
 
@@ -241,7 +243,7 @@ Every case above is a **flag**. The record a subcommand emits is a surface too, 
 | rename or remove a `json` key | `major` |
 | move a declared field between nesting levels (flatten or re-nest) | `major` |
 | change the top-level container of a subcommand's output (object ↔ array) | `major`, window impossible |
-| replace a raw upstream passthrough with declared fields, no data loss ([§4 posture](#units-and-cross-codec-parity)) | `major` |
+| replace a raw upstream passthrough with declared fields, no data loss — where [§4's posture](#units-and-cross-codec-parity) permits it at all | `major` |
 | change an existing field's unit under the same key | **not permitted** — see below |
 
 CSV columns follow the `json` field they project — a column's bump is its field's bump. Dropping a column while its `json` field stays is a `minor`, because §4 lets `csv` omit.
